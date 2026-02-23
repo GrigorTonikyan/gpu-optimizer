@@ -13,10 +13,11 @@ description: Implementation guidelines
 2. **Just-In-Time (JIT) Elevation:** The application must run in user-space. NEVER assume the app is running as root. All file modifications or system commands (e.g., `mkinitcpio`) must be wrapped in `sudo` explicitly within the code (e.g., using `sudo tee` for writing files).
 3. **Agnostic Discovery:** Do not hardcode paths. You must write logic that probes the system to discover the bootloader, initramfs generator, display server (Wayland/X11), and GPU vendor(s).
 4. **Immutable Awareness:** Your discovery logic must check for immutable filesystems (ostree, NixOS, SteamOS). If detected, inform the user and abort file-write operations.
-5. **Interactive UI:** Use `@clack/prompts` and `picocolors` for all terminal interactions.
+5. **Interactive UI:** The application MUST be a proper Terminal User Interface (TUI) with mouse and arrow key navigation, not sequential console logs.
+6. **Decoupled Architecture:** The backend "engine" containing hardware discovery and mutation mechanics MUST be strictly decoupled from the interactive TUI layer, utilizing clean interfaces or an API bridge.
 
 **Workflow Instructions:**
-I will provide the Project Requirement Document (PRD) and the 2026 Addendum below. 
+I will provide the Unified Project Requirement Document (PRD) below. 
 DO NOT attempt to write the entire application in one response. We will build this stage-by-stage to ensure quality and testability.
 
 When you acknowledge this prompt, your FIRST response must only include:
@@ -25,5 +26,5 @@ When you acknowledge this prompt, your FIRST response must only include:
 3. Numbered list of All Implementation Stages where all completed ones are checked.
 4. Question to provide number of Stage to focus on next, or "continue" to continue development in order of list.
 
-*** @docs/PRD.md @docs/ADDENDUM.md ***
+*** @docs/PRD.md ***
 refer and strictly adhere to: @.agents/rules/*.md
