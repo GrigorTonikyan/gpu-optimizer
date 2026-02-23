@@ -19,9 +19,8 @@ The agent MUST adhere strictly to these constraints:
 * Only upon confirmation is the staged file moved to the system directory using elevated privileges.
 
 
-3. **Agnostic Discovery:** Do not hardcode paths like `/boot/loader`. The system must probe for GRUB, systemd-boot, rEFInd, and initramfs generators (mkinitcpio, dracut, update-initramfs).
-4. **UI/UX:** Use `@clack/prompts` for interactive menus and `picocolors` for terminal output.
-
+4. **UI/UX:** The application MUST be a proper Terminal User Interface (TUI), not just sequential `console.log` output. It should provide a structured, persistent screen layout where dry-mode status and current context are clearly visible on all screens. The TUI must completely support rich interaction, allowing users to navigate with arrow keys, select/deselect items, and use mouse input across all screens.
+5. **Decoupled Architecture:** The UI/TUI layer MUST be strictly decoupled from the underlying logic/backend. The backend "engine" containing hardware discovery, rule generation, and file mutation must operate independently and expose clean interfaces or APIs that the TUI consumes, ensuring the core engine could hypothetically run heedlessly or with a different UI.
 ---
 
 ## 3. Core Data Structures (TypeScript Interfaces)
@@ -110,17 +109,30 @@ The agent must implement the application sequentially following these stages:
 * [ ] **5.2 Systemd-Boot Injector:** Parse the active `.conf` file, append to the `options` line (ensuring no duplicates), write to staging, and provide a diff string.
 * [ ] **5.3 Rebuild Trigger:** A function to execute `sudo mkinitcpio -P`, `sudo dracut --force`, or `sudo update-initramfs -u` based on the discovery phase.
 
-### Stage 6: The Interactive CLI (`src/index.ts`)
+### Stage 6: The Interactive TUI
 
-* [ ] **6.1 Main Menu:** Use `@clack/prompts` `select` to offer: [1. View Status], [2. Apply Optimizations], [3. Rollback], [4. Exit].
-* [ ] **6.2 View Status Flow:** Pretty-print the `SystemProfile` (detected GPUs, Bootloader, Initramfs, GuC/HuC status, memory layout).
-* [ ] **6.3 Apply Flow:**
-1. Run Discovery.
-2. Generate required changes via Optimization Matrix.
-3. Generate temporary staging files.
-4. Print Diffs to the console using color coding (Red for old, Green for new).
-5. Prompt: "Apply these changes? (requires sudo)".
-6. If yes, run Backup Engine -> write elevated -> trigger Rebuild.
+* [ ] **6.1 Main Menu:** Implement a rich TUI main menu offering: [1. View Brief Status], [2. View Detailed System Info], [3. Apply Optimizations], [4. Backup Management], [5. Settings], [6. Exit].
+  * *Global UI Requirement:* Dry mode (if enabled) MUST be clearly visible on all screens.
+* [ ] **6.2 Settings Submenu:** A fully persistent settings menu where the user can configure:
+  * Verbosity level
+  * Logging to files (enable/disable)
+  * Target location of logs and backups
+  * Dry mode (Simulation mode)
+* [ ] **6.3 View Brief Status Flow:** Display a concise, updated `SystemProfile` including device models, driver versions, current states, and real-time stats (CPU info, detailed memory info, component temperatures, etc.).
+* [ ] **6.4 View Detailed System Info:** A dedicated submenu where the user can get exhaustive information about the OS, OS config, and all hardware devices. This must include explanations of how, why, and where everything is configured, and how it can be improved (with detailed descriptions and explanations).
+* [ ] **6.5 Apply Flow:**
+  1. Run Discovery.
+  2. Generate required changes via Optimization Matrix and present available optimizations as a selectable list.
+  3. The user can navigate, select, and deselect multiple specific optimizations.
+  4. The user can request detailed information for any optimization in the list (explaining what it does, why/how it works, pros/cons, and risks involved).
+  5. Generate temporary staging files covering only the selected optimizations.
+  6. Print Diffs to the screen using color coding (Red for old, Green for new).
+  7. Prompt: "Apply these changes? (requires sudo)".
+  8. If yes, run Backup Engine -> write elevated -> trigger Rebuild.
 
-
-* [ ] **6.4 Rollback Flow:** List available backups by timestamp using `@clack/prompts` `select`. On selection, execute Rollback Logic and trigger Rebuild.
+* [ ] **6.6 Backup Management Flow:** A dedicated submenu where users can manage system snapshots. It must allow the user to:
+  1. Create new manual backups.
+  2. Import backup archives from other locations.
+  3. Export existing backups to a portable archive.
+  4. Delete specific backups.
+  5. Execute a Rollback using a specific snapshot, which automatically triggers a Rebuild.

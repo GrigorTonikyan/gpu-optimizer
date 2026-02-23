@@ -24,14 +24,34 @@ interface SystemProfile {
   immutableType?: 'ostree' | 'steamos' | 'nixos';
   /** Parsed from `uname -r` */
   kernelVersion: string;
+  /** Extended stats for brief/detailed views */
+  cpuInfo: {
+    model: string;
+    cores: number;
+    usagePercent: number;
+    temperature?: number;
+  };
+  memoryStats: {
+    total: number;
+    used: number;
+    free: number;
+  };
 }
 
 interface GPUDevice {
   vendor: GPUVendor;
+  model: string;
   /** e.g., "8086:9a60" (Crucial for Intel Xe binding) */
   pciId: string;
   /** e.g., "i915", "xe", "amdgpu", "radeon" */
   activeDriver: string;
+  currentState: string;
+  stats?: {
+    temperature?: number;
+    utilization?: number;
+    vramTotal?: number;
+    vramUsed?: number;
+  };
 }
 
 ```
