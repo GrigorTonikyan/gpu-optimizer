@@ -5,6 +5,7 @@ import { discoverSystem } from './discovery';
 import { generateOptimizationPlan } from './engine/matrix';
 import { createSnapshot, listSnapshots, rollback } from './engine/backup';
 import { injectGrub, injectSystemdBoot, writeModprobeConfig, applyStaged, triggerRebuild } from './engine/mutate';
+import { getAvailableServices, enableNvidiaPersistence, stageUdevPowerRule, reloadUdevRules } from './engine/services';
 import type { SystemProfile, StagedMutation } from './types';
 
 /**
@@ -234,6 +235,65 @@ async function applyFlow(profile: SystemProfile): Promise<void> {
     }
 
     p.log.success('All optimizations applied successfully!');
+
+    await serviceFlow(profile);
+}
+
+/**
+ * Offers Stage 7 system services after optimizations are applied.
+ * This includes NVIDIA persistence daemon and PCI power management rules.
+ *
+ * @param profile - The SystemProfile to determine which services are applicable
+ */
+async function serviceFlow(profile: SystemProfile): Promise<void> {
+    const services = getAvailableServices(profile);
+
+    if (!services.nvidiaPersistence && !services.udevPowerManagement) {
+        return;
+    }
+
+    console.log('');
+    p.log.step('Additional system services available:');
+
+    if (services.nvidiaPersistence) {
+        const enablePersistence = await p.confirm({
+            message: 'Enable NVIDIA persistence daemon? (reduces GPU load/unload latency)',
+        });
+
+        if (!isCancel(enablePersistence) && enablePersistence) {
+            try {
+                enableNvidiaPersistence();
+            } catch (e: any) {
+                p.log.error(`Failed to enable nvidia-persistenced: ${e.message}`);
+            }
+        }
+    }
+
+    if (services.udevPowerManagement) {
+        const enablePm = await p.confirm({
+            message: 'Install PCI power management udev rule? (allows dGPU to sleep when idle)',
+        });
+
+        if (!isCancel(enablePm) && enablePm) {
+            try {
+                const mutation = stageUdevPowerRule();
+
+                console.log('');
+                console.log(pc.bold(`  File: ${mutation.targetPath}`));
+                console.log(pc.dim('  ─────────────────────────────────────'));
+                for (const line of mutation.diff.split('\n')) {
+                    console.log(`  ${line}`);
+                }
+                console.log(pc.dim('  ─────────────────────────────────────'));
+
+                applyStaged(mutation);
+                reloadUdevRules();
+                p.log.success('PCI power management rule installed.');
+            } catch (e: any) {
+                p.log.error(`Failed to install udev rule: ${e.message}`);
+            }
+        }
+    }
 }
 
 /**

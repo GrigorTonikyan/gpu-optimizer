@@ -38,6 +38,11 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
   - Apply flow: discover → matrix → optional rule selection → diff → confirm → backup → apply → rebuild
   - Rollback flow: list snapshots → select → restore → rebuild
   - Immutable system guard with distro-specific instructions
+- Systemd & Udev services (`src/engine/services.ts`):
+  - NVIDIA persistence daemon enablement via systemctl
+  - PCI power management udev rule for hybrid dGPU sleep
+  - Service availability detection per system profile
+- Unit tests for services (5 tests)
 
 
 - Project scaffolding with Bun runtime, TypeScript strict mode, `@clack/prompts`, `picocolors`, `zod`
