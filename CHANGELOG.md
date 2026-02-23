@@ -8,6 +8,15 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 ## [Unreleased]
 
 ### Added
+- Optimization Matrix engine (`src/engine/matrix.ts`): generates kernel parameter and modprobe rules based on system profile
+  - Intel: GuC/HuC/FBC modprobe options for i915; optional xe force_probe migration
+  - NVIDIA: DRM modesetting (mandatory); fbdev for Wayland (optional)
+  - AMD: ppfeaturemask OverDrive unlock; sg_display and tmz stability fixes for RDNA3
+  - Memory: zswap disable when zram is already present
+- New types: `OptimizationRule`, `OptimizationPlan`, `BackupRecord`, `OptimizationTarget`, `OptimizationSeverity`
+- Unit tests for optimization matrix (14 tests, 85 assertions)
+
+
 - Project scaffolding with Bun runtime, TypeScript strict mode, `@clack/prompts`, `picocolors`, `zod`
 - Shell execution wrapper (`src/utils/shell.ts`): `runUser`, `runElevated`, `writeElevated`, `stageFile`
 - Discovery Engine (`src/discovery/`):

@@ -1,5 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
-import type { GPUDevice, SystemProfile } from '../types';
+import { describe, it, expect } from 'bun:test';
 
 describe('Shell Utilities', () => {
     it('runUser executes commands and returns stdout', async () => {
@@ -99,7 +98,7 @@ describe('Discovery — Immutability', () => {
 
         expect(typeof result.isImmutable).toBe('boolean');
         if (result.isImmutable) {
-            expect(['ostree', 'steamos', 'nixos']).toContain(result.immutableType);
+            expect(['ostree', 'steamos', 'nixos']).toContain(result.immutableType!);
         }
     });
 });
