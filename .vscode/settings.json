@@ -1,0 +1,29 @@
+{
+    "cSpell.words": [
+        "amdgpu",
+        "Bazzite",
+        "bootctl",
+        "CMDLINE",
+        "Distros",
+        "dracut",
+        "fbdev",
+        "kargs",
+        "Kinoite",
+        "mkinitcpio",
+        "modeset",
+        "modesetting",
+        "Navi",
+        "NIXOS",
+        "ostree",
+        "persistenced",
+        "ppfeaturemask",
+        "radeon",
+        "RDNA",
+        "Silverblue",
+        "steamos",
+        "undervolting",
+        "zram",
+        "zramctl",
+        "zswap"
+    ]
+}
