@@ -58,5 +58,8 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 - Core type definitions (`src/types.ts`): `GPUVendor`, `GPUDevice`, `SystemProfile`, `BootloaderType`, `InitramfsType`
 - Comprehensive unit tests (`src/tests/discovery.test.ts`) for all discovery modules
 
+### Changed
+- All features unified and tested under `bun test` and manual CLI verification. System verified for standalone compilation.
+
 ### Fixed
 - Bootloader detection failing on systems where `/boot` requires elevated permissions (e.g., Arch Linux with 0700 boot partition). Added `runLenient` helper to capture `bootctl` stdout even on non-zero exit codes.
