@@ -21,6 +21,17 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
   - `listSnapshots`: returns available snapshots sorted newest-first
   - `rollback`: restores files from snapshot via `writeElevated`
 - Unit tests for backup engine (11 tests)
+- Mutation Engine (`src/engine/mutate.ts`):
+  - `injectGrub`: parse GRUB config, deduplicate params, stage and diff
+  - `injectSystemdBoot`: parse systemd-boot entry, deduplicate params, stage and diff
+  - `writeModprobeConfig`: generate modprobe.d config from optimization rules
+  - `applyStaged`: write staged file to target via `writeElevated`
+  - `triggerRebuild`: execute initramfs rebuild with Boot Rescue Guide
+  - `generateDiff`: color-coded terminal diff using `picocolors`
+- `StagedMutation` type for tracking staged file mutations
+- `bun run bundle` script (`bun build --compile`) for single-file executables
+- `.agents/rules/runtime.md` documenting Bun as sole runtime/package manager
+- Unit tests for mutation engine (14 tests)
 
 
 - Project scaffolding with Bun runtime, TypeScript strict mode, `@clack/prompts`, `picocolors`, `zod`

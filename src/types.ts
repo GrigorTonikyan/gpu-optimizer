@@ -85,3 +85,16 @@ export interface BackupRecord {
         backupPath: string;
     }[];
 }
+
+/**
+ * Represents a file mutation that has been staged to a temp file
+ * but not yet applied. Contains the diff for user review.
+ */
+export interface StagedMutation {
+    /** Path to the staged temp file containing the modified content */
+    stagedPath: string;
+    /** Absolute path to the target system file to be overwritten */
+    targetPath: string;
+    /** Color-coded diff string for terminal display */
+    diff: string;
+}

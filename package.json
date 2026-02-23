@@ -1,8 +1,13 @@
 {
   "name": "universal-gpu-optimizer",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "bundle": "bun build --compile --minify --target=bun --outfile=dist/gpu-optimizer src/index.ts",
+    "test": "bun test"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^25.3.0"
