@@ -32,6 +32,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 - `bun run bundle` script (`bun build --compile`) for single-file executables
 - `.agents/rules/runtime.md` documenting Bun as sole runtime/package manager
 - Unit tests for mutation engine (14 tests)
+- Interactive CLI (`src/index.ts`):
+  - Main menu loop with @clack/prompts (View Status, Apply, Rollback, Exit)
+  - Pretty-printed system status with GPU details, driver, display server, memory
+  - Apply flow: discover → matrix → optional rule selection → diff → confirm → backup → apply → rebuild
+  - Rollback flow: list snapshots → select → restore → rebuild
+  - Immutable system guard with distro-specific instructions
 
 
 - Project scaffolding with Bun runtime, TypeScript strict mode, `@clack/prompts`, `picocolors`, `zod`
