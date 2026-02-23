@@ -13,14 +13,19 @@ The agent MUST adhere strictly to these constraints:
 
 1. **Just-In-Time (JIT) Privilege Escalation:** The application MUST NOT be run as `root` or with `sudo` directly. It runs in user-space. When a file write or elevated command (like `mkinitcpio`) is required, it must wrap the specific command using `sudo` (e.g., `sudo tee`, `sudo cp`, or `sudo <cmd>`).
 2. **Zero-Destruction / Atomic Operations:** No file is ever modified directly.
-* Files are copied to a timestamped backup directory (`~/.local/state/gpu-optimizer/backups/`).
-* Modifications are made to a temporary staging file (`/tmp/gpu-opt-...`).
-* A diff is presented to the user.
-* Only upon confirmation is the staged file moved to the system directory using elevated privileges.
-
-
+    * Files are copied to a timestamped backup directory (`~/.local/state/gpu-optimizer/backups/`).
+    * Modifications are made to a temporary staging file (`/tmp/gpu-opt-...`).
+    * A diff is presented to the user.
+    * Only upon confirmation is the staged file moved to the system directory using elevated privileges.
+3. **Agnostic Discovery:** Do not hardcode paths like `/boot/loader`. The system must probe for GRUB, systemd-boot, rEFInd, and initramfs generators (mkinitcpio, dracut, update-initramfs).
 4. **UI/UX:** The application MUST be a proper Terminal User Interface (TUI), not just sequential `console.log` output. It should provide a structured, persistent screen layout where dry-mode status and current context are clearly visible on all screens. The TUI must completely support rich interaction, allowing users to navigate with arrow keys, select/deselect items, and use mouse input across all screens.
 5. **Decoupled Architecture:** The UI/TUI layer MUST be strictly decoupled from the underlying logic/backend. The backend "engine" containing hardware discovery, rule generation, and file mutation must operate independently and expose clean interfaces or APIs that the TUI consumes, ensuring the core engine could hypothetically run heedlessly or with a different UI.
+6. **Immutable & Atomic Distros:** The Discovery Engine MUST check for immutability.
+    * Check for `rpm-ostree` (Fedora Atomic).
+    * Check for `steamos-readonly` (SteamOS).
+    * Check for NixOS (`/etc/NIXOS`).
+    * *Action Logic:* If an immutable system is detected, the standard file-writing method (via `sudo tee`) must be bypassed. Instead, the tool must instruct the user on the distro-specific command (e.g., `rpm-ostree kargs --append=...`) or gracefully exit indicating manual intervention is required.
+
 ---
 
 ## 3. Core Data Structures (TypeScript Interfaces)
@@ -45,6 +50,23 @@ interface SystemProfile {
     hasZram: boolean;
     hasZswap: boolean;
   };
+  displayServer: 'Wayland' | 'X11' | 'Unknown';
+  isImmutable: boolean;
+  immutableType?: 'ostree' | 'steamos' | 'nixos';
+  /** Parsed from `uname -r` */
+  kernelVersion: string;
+  /** Extended stats for brief/detailed views */
+  cpuInfo: {
+    model: string;
+    cores: number;
+    usagePercent: number;
+    temperature?: number;
+  };
+  memoryStats: {
+    total: number;
+    used: number;
+    free: number;
+  };
 }
 
 interface BackupRecord {
@@ -58,6 +80,21 @@ interface BackupRecord {
   }[];
 }
 
+interface GPUDevice {
+  vendor: GPUVendor;
+  model: string;
+  /** e.g., "8086:9a60" (Crucial for Intel Xe binding) */
+  pciId: string;
+  /** e.g., "i915", "xe", "amdgpu", "radeon" */
+  activeDriver: string;
+  currentState: string;
+  stats?: {
+    temperature?: number;
+    utilization?: number;
+    vramTotal?: number;
+    vramUsed?: number;
+  };
+}
 ```
 
 ---
@@ -70,20 +107,15 @@ The agent must implement the application sequentially following these stages:
 
 * [ ] **1.1 Project Init:** Initialize Bun project, configure `tsconfig.json` for ESNext, Node resolution, and strict typing. Install `@clack/prompts`, `picocolors`, and `zod`.
 * [ ] **1.2 Shell Execution Wrapper (`src/utils/shell.ts`):** Create a robust wrapper around `node:child_process.execSync`.
-* Implement `runUser(cmd)`: Returns stdout.
-* Implement `runElevated(cmd)`: Wraps command in `sudo`.
-* Implement `writeElevated(path, content)`: Uses `echo "<content>" | sudo tee <path> > /dev/null` to safely write protected files.
-
-
+  * Implement `runUser(cmd)`: Returns stdout.
+  * Implement `runElevated(cmd)`: Wraps command in `sudo`.
+  * Implement `writeElevated(path, content)`: Uses `echo "<content>" | sudo tee <path> > /dev/null` to safely write protected files.
 * [ ] **1.3 File Staging System:** Create a utility to generate unique temp files in `/tmp` for staging edits before applying them.
 
 ### Stage 2: The Discovery Engine (`src/discovery/`)
 
 * [ ] **2.1 GPU Detection (`hardware.ts`):** Parse `lspci -nnk` to detect VGA/3D controllers. Return an array of detected `GPUVendor`s and set `isHybrid` if length > 1.
-* [ ] **2.2 Bootloader Resolution (`boot.ts`):** - Check for GRUB (`/etc/default/grub`).
-* Check for systemd-boot by probing `/boot/loader/entries/`, `/efi/loader/entries/`, and `/boot/efi/loader/entries/`. Locate the active `.conf` file based on the current kernel (`uname -r`).
-
-
+* [ ] **2.2 Bootloader Resolution (`boot.ts`):** Check for GRUB (`/etc/default/grub`). Check for systemd-boot by probing `/boot/loader/entries/`, `/efi/loader/entries/`, and `/boot/efi/loader/entries/`. Locate the active `.conf` file based on the current kernel (`uname -r`).
 * [ ] **2.3 Initramfs Resolution (`initramfs.ts`):** Use `which mkinitcpio`, `which dracut`, or `which update-initramfs` to determine the active generator.
 * [ ] **2.4 Memory Profiler (`memory.ts`):** Check `/sys/module/zswap/parameters/enabled` and `zramctl` to determine current swap architecture.
 
@@ -91,9 +123,16 @@ The agent must implement the application sequentially following these stages:
 
 *Agent Instructions: Create a mapping of required kernel parameters and modprobe rules based on discovered hardware.*
 
-* [ ] **3.1 Intel Rules:** If Intel, queue `options i915 enable_guc=3 enable_fbc=1`. If hybrid, ensure `i915` parameters don't conflict with dGPU.
-* [ ] **3.2 NVIDIA Rules:** If NVIDIA, queue `nvidia-drm.modeset=1` for kernel parameters.
-* [ ] **3.3 AMD Rules:** If AMD, queue `amdgpu.ppfeaturemask=0xffffffff` (if overclocking support is requested).
+* [ ] **3.1 Intel Rules (`i915` vs `xe` Driver Shift):** Intel is actively migrating from the legacy `i915` driver to the modern `xe` driver.
+  * Detection: Use `lspci -nnk` to extract the PCI-ID (e.g., `8086:56a0`).
+  * Queue `options i915 enable_guc=3 enable_fbc=1`. If hybrid, ensure `i915` parameters don't conflict with dGPU.
+  * Injection Rule: If the user elects to use the modern `xe` driver on supported older hardware, the injector must add: `i915.force_probe=!<PCI-ID> xe.force_probe=<PCI-ID>`.
+* [ ] **3.2 AMD Rules (RDNA3/RDNA4 & Legacy Support):** Kernel 6.19 moved legacy GCN 1.0/1.1 cards to `amdgpu` by default, but modern RDNA cards require specific parameters for stability.
+  * RDNA3 Stability Rule: If random hangs or "fence timeouts" are reported in logs (or as a safe default for Navi 3x chips), queue: `amdgpu.sg_display=0` and `amdgpu.tmz=0`.
+  * Power Management: Queue `amdgpu.ppfeaturemask=0xffffffff` to unlock OverDrive/undervolting capabilities via tools like CoreCtrl.
+* [ ] **3.3 NVIDIA Rules (Wayland Native):** 
+  * Display Server Detection: The agent must check `process.env.XDG_SESSION_TYPE`.
+  * Wayland Rule: If `Wayland` + `NVIDIA` are detected, `nvidia-drm.modeset=1` is strictly mandatory. Optionally, suggest adding `nvidia-drm.fbdev=1` for the newer 550+ proprietary drivers to fix Wayland flickering.
 * [ ] **3.4 Memory Rules:** If `zram` is present and `zswap` is enabled, queue kernel parameter `zswap.enabled=0`.
 
 ### Stage 4: Backup & Rollback Engine (`src/engine/backup.ts`)
@@ -107,7 +146,8 @@ The agent must implement the application sequentially following these stages:
 
 * [ ] **5.1 GRUB Injector:** Safely parse `/etc/default/grub`, append necessary parameters to `GRUB_CMDLINE_LINUX_DEFAULT` (ensuring no duplicates), write to staging, and provide a diff string.
 * [ ] **5.2 Systemd-Boot Injector:** Parse the active `.conf` file, append to the `options` line (ensuring no duplicates), write to staging, and provide a diff string.
-* [ ] **5.3 Rebuild Trigger:** A function to execute `sudo mkinitcpio -P`, `sudo dracut --force`, or `sudo update-initramfs -u` based on the discovery phase.
+* [ ] **5.3 Rebuild Trigger & Boot Rescue:** A function to execute `sudo mkinitcpio -P`, `sudo dracut --force`, or `sudo update-initramfs -u` based on the discovery phase.
+  * **Pre-Flight Requirement:** Before executing the rebuild, the CLI MUST print a "Rescue Guide". (e.g., *"If your system fails to boot, press 'e' at the GRUB menu (or Space at systemd-boot), find the line starting with 'linux', delete the parameters we just added, and press F10 to boot normally."*)
 
 ### Stage 6: The Interactive TUI
 
@@ -136,3 +176,8 @@ The agent must implement the application sequentially following these stages:
   3. Export existing backups to a portable archive.
   4. Delete specific backups.
   5. Execute a Rollback using a specific snapshot, which automatically triggers a Rebuild.
+
+### Stage 7: Systemd & Udev Rules (Operating System Enhancements)
+
+* [ ] **7.1 NVIDIA Persistence:** If NVIDIA is detected, offer to enable the persistence daemon to prevent module load/unload lag: `shell.runElevated('systemctl enable --now nvidia-persistenced')`.
+* [ ] **7.2 PCI Power Management (`udev`):** Create a staging file for `/etc/udev/rules.d/80-gpu-pm.rules` to set `ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{power/control}="auto"` to ensure the dGPU sleeps properly in Hybrid setups.
