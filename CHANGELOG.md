@@ -15,6 +15,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
   - Memory: zswap disable when zram is already present
 - New types: `OptimizationRule`, `OptimizationPlan`, `BackupRecord`, `OptimizationTarget`, `OptimizationSeverity`
 - Unit tests for optimization matrix (14 tests, 85 assertions)
+- Backup & Rollback engine (`src/engine/backup.ts`):
+  - `initBackupDir`: creates `~/.local/state/gpu-optimizer/backups/`
+  - `createSnapshot`: copies target files into timestamped directory with `manifest.json`
+  - `listSnapshots`: returns available snapshots sorted newest-first
+  - `rollback`: restores files from snapshot via `writeElevated`
+- Unit tests for backup engine (11 tests)
 
 
 - Project scaffolding with Bun runtime, TypeScript strict mode, `@clack/prompts`, `picocolors`, `zod`
