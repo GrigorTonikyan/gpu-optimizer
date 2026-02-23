@@ -18,4 +18,4 @@ trigger: always_on
 - all tests pass.
 - app builds and runs.
 - ALL FUNCTIONALITY implemented during this session should be run and tested by YOU using terminal or browser.
-- After all verifications pass, create commit (following conventional commits) and maintain/update changelog!
+- After all verifications pass, create commit (following `conventional commits`) and maintain/update changelog!

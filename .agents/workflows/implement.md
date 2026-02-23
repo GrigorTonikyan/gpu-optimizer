@@ -26,6 +26,4 @@ When you acknowledge this prompt, your FIRST response must only include:
 4. Question to provide number of Stage to focus on next, or "continue" to continue development in order of list.
 
 *** @docs/PRD.md @docs/ADDENDUM.md ***
-refer to:
-- `@.agents/rules/general.md`
-- `@.agents/rules/stages.md`
+refer and strictly adhere to: @.agents/rules/*.md

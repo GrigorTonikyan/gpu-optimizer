@@ -7,6 +7,17 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-23T09:10:00+04:00
+
+### Changed
+- Unified `docs/PRD.md` and `docs/ADDENDUM.md` into a single, comprehensive `docs/PRD.md` without information loss.
+- Overhauled UI Constraints in PRD: Replaced simple CLI output with a robust TUI framework requirement boasting rich arrow keys and mouse interaction.
+- Introduced Decoupled Architecture constraints (Layer separation between TUI and Backend Engine).
+- Replaced flat rollback flow in PRD with a fully-featured Backup Management menu (Create, Import, Export, Delete, Rollback).
+- Expanded Types (`SystemProfile`, `GPUDevice`) in PRD to include deep telemetry (CPU stats, detailed RAM, VRAM usage, and thermals).
+
+## [0.1.0] - 2026-02-23T08:00:00+04:00
+
 ### Added
 - Optimization Matrix engine (`src/engine/matrix.ts`): generates kernel parameter and modprobe rules based on system profile
   - Intel: GuC/HuC/FBC modprobe options for i915; optional xe force_probe migration
