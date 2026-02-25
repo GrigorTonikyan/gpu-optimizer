@@ -7,6 +7,27 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-25T11:22:00+04:00
+
+### Added
+- **Full TUI Overhaul**: Implemented a rich, terminal-interactive interface using `terminal-kit` with persistent screen layout and keyboard/mouse navigation.
+- **Decoupled Architecture**: Refactored the monolithic CLI into a strictly decoupled structure with TUI (`src/tui/`), CLI (`src/cli/`), and Controller (`src/controllers/`) layers.
+- **Telemetry System**: Introduced point-in-time system snapshots capturing CPU model/cores/load, GPU thermals/stats, and detailed memory usage (`src/discovery/telemetry.ts`).
+- **Configuration Engine**: Added XDG-compliant configuration management with `zod` validation and persistence (`src/config/`).
+- **Backup Management UI**: Developed a comprehensive backup screen for creating, listing, exporting, importing, deleting, and rolling back system snapshots.
+- **CLI Passthrough Mode**: Implemented non-interactive CLI flags (`--status`, `--detailed`, `--apply`, `--rollback`, etc.) for automation and scripting.
+- **Dry Mode**: Integrated a global dry-run simulation mode, visible across all UI screens and CLI operations.
+- **Unit Tests**: Added comprehensive test coverage for controllers, configuration, and telemetry modules.
+
+### Changed
+- Replaced Node.js specific APIs with Bun-native equivalents (e.g., `crypto.randomUUID`, `Bun.argv`).
+- Updated project file structure to support modularized components and controllers.
+- Optimized TUI screen rendering and event handling for improved responsiveness.
+
+### Fixed
+- Improved bootloader detection reliability for systems with restricted `/boot` permissions.
+- Refined TUI layout responsiveness for varying terminal dimensions.
+
 ## [0.2.0] - 2026-02-23T09:10:00+04:00
 
 ### Changed

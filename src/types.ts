@@ -10,10 +10,23 @@ export type OptimizationSeverity = 'recommended' | 'optional';
 
 export interface GPUDevice {
     vendor: GPUVendor;
+    /** Human-readable model name extracted from lspci, e.g. "Intel UHD Graphics 770" */
+    model: string;
     /** e.g., "8086:9a60" — crucial for Intel Xe binding and force_probe */
     pciId: string;
     /** e.g., "i915", "xe", "amdgpu", "radeon", "nvidia" */
     activeDriver: string;
+    /** Real-time GPU telemetry, populated on-demand per snapshot */
+    stats?: {
+        /** GPU die temperature in °C, read from hwmon sysfs */
+        temperature?: number;
+        /** GPU utilization percentage (0–100) */
+        utilization?: number;
+        /** Total VRAM in bytes (NVIDIA/AMD only) */
+        vramTotal?: number;
+        /** Used VRAM in bytes (NVIDIA/AMD only) */
+        vramUsed?: number;
+    };
 }
 
 export interface SystemProfile {
@@ -35,6 +48,44 @@ export interface SystemProfile {
         hasZram: boolean;
         hasZswap: boolean;
     };
+    /** CPU information for the status display */
+    cpuInfo: {
+        /** CPU model string from /proc/cpuinfo */
+        model: string;
+        /** Number of logical cores */
+        cores: number;
+        /** Current aggregate CPU usage percentage (0–100) */
+        usagePercent: number;
+        /** CPU package temperature in °C from hwmon sysfs */
+        temperature?: number;
+    };
+    /** Detailed memory statistics from /proc/meminfo */
+    memoryStats: {
+        /** Total physical RAM in bytes */
+        total: number;
+        /** Used RAM in bytes */
+        used: number;
+        /** Free RAM in bytes */
+        free: number;
+    };
+}
+
+/**
+ * Persistent application configuration stored at
+ * `$XDG_CONFIG_HOME/gpu-optimizer/config.json`.
+ * Validated with zod on load to prevent corrupt state.
+ */
+export interface AppConfig {
+    /** Verbosity level: 0 = quiet, 1 = normal, 2 = verbose */
+    verbosity: 0 | 1 | 2;
+    /** Enable logging to files */
+    loggingEnabled: boolean;
+    /** Custom log directory (XDG_STATE_HOME/gpu-optimizer/logs by default) */
+    logDirectory: string;
+    /** Custom backup directory (XDG_STATE_HOME/gpu-optimizer/backups by default) */
+    backupDirectory: string;
+    /** Dry mode: simulate all mutations without writing */
+    dryMode: boolean;
 }
 
 /**

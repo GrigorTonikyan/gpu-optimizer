@@ -16,6 +16,8 @@ function createProfile(overrides: Partial<SystemProfile> = {}): SystemProfile {
         bootloader: { type: 'Unknown', configPath: '' },
         initramfs: 'Unknown',
         memory: { hasZram: false, hasZswap: false },
+        cpuInfo: { model: 'Test CPU', cores: 4, usagePercent: 0 },
+        memoryStats: { total: 16 * 1024 * 1024 * 1024, used: 8 * 1024 * 1024 * 1024, free: 8 * 1024 * 1024 * 1024 },
         ...overrides,
     };
 }
@@ -23,7 +25,7 @@ function createProfile(overrides: Partial<SystemProfile> = {}): SystemProfile {
 describe('Services — getAvailableServices', () => {
     it('returns no services for non-NVIDIA systems', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'i915' }],
+            gpus: [{ vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'i915' }],
         });
 
         const services = getAvailableServices(profile);
@@ -33,7 +35,7 @@ describe('Services — getAvailableServices', () => {
 
     it('returns nvidiaPersistence for NVIDIA GPU', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'NVIDIA', pciId: '10de:25a0', activeDriver: 'nvidia' }],
+            gpus: [{ vendor: 'NVIDIA', model: 'Test NVIDIA GPU', pciId: '10de:25a0', activeDriver: 'nvidia' }],
         });
 
         const services = getAvailableServices(profile);
@@ -44,8 +46,8 @@ describe('Services — getAvailableServices', () => {
     it('returns both services for hybrid NVIDIA', () => {
         const profile = createProfile({
             gpus: [
-                { vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'i915' },
-                { vendor: 'NVIDIA', pciId: '10de:25a0', activeDriver: 'nvidia' },
+                { vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'i915' },
+                { vendor: 'NVIDIA', model: 'Test NVIDIA GPU', pciId: '10de:25a0', activeDriver: 'nvidia' },
             ],
             isHybrid: true,
         });
@@ -57,7 +59,7 @@ describe('Services — getAvailableServices', () => {
 
     it('returns no services for AMD-only system', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'AMD', pciId: '1002:744c', activeDriver: 'amdgpu' }],
+            gpus: [{ vendor: 'AMD', model: 'Test AMD GPU', pciId: '1002:744c', activeDriver: 'amdgpu' }],
         });
 
         const services = getAvailableServices(profile);

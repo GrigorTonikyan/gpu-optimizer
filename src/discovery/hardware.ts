@@ -10,13 +10,13 @@ export function getKernelVersion(): string {
 }
 
 export function detectDisplayServer(): 'Wayland' | 'X11' | 'Unknown' {
-    const sessionType = process.env.XDG_SESSION_TYPE?.toLowerCase();
+    const sessionType = Bun.env.XDG_SESSION_TYPE?.toLowerCase();
     if (sessionType === 'wayland') return 'Wayland';
     if (sessionType === 'x11') return 'X11';
 
     /** Fallback checks (e.g. WAYLAND_DISPLAY) */
-    if (process.env.WAYLAND_DISPLAY) return 'Wayland';
-    if (process.env.DISPLAY) return 'X11';
+    if (Bun.env.WAYLAND_DISPLAY) return 'Wayland';
+    if (Bun.env.DISPLAY) return 'X11';
 
     return 'Unknown';
 }
@@ -40,6 +40,7 @@ export function detectGPUs(): { gpus: GPUDevice[]; isHybrid: boolean } {
             let vendor: GPUVendor | null = null;
             let pciId = '';
             let activeDriver = '';
+            let model = 'Unknown';
 
             const lines = block.split('\n').map(l => l.trim());
             const headerLine = lines[0];
@@ -60,6 +61,18 @@ export function detectGPUs(): { gpus: GPUDevice[]; isHybrid: boolean } {
                 pciId = pciMatch[1].toLowerCase();
             }
 
+            /**
+             * Extract the GPU model name from the lspci header line.
+             * The lspci header has the format:
+             *   "VGA compatible controller [0300]: Intel Corporation TigerLake-H GT1 [UHD Graphics] [8086:9a60] (rev 01)"
+             * We match from the class code bracket (e.g. [0300]) followed by a colon,
+             * then capture everything up to the PCI vendor:device ID bracket.
+             */
+            const modelMatch = headerLine.match(/\[\d{4}\]:\s*(.+?)\s*\[[\da-f]{4}:[\da-f]{4}\]/i);
+            if (modelMatch?.[1]) {
+                model = modelMatch[1].trim();
+            }
+
             /** Extract Kernel driver in use */
             const driverLine = lines.find(l => l.startsWith('Kernel driver in use:'));
             if (driverLine) {
@@ -69,6 +82,7 @@ export function detectGPUs(): { gpus: GPUDevice[]; isHybrid: boolean } {
             if (vendor) {
                 gpus.push({
                     vendor,
+                    model,
                     pciId,
                     activeDriver
                 });

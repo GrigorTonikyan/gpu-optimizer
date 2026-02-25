@@ -2,7 +2,6 @@ import { describe, it, expect } from 'bun:test';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { randomBytes } from 'node:crypto';
 import { generateDiff, injectGrub, injectSystemdBoot, writeModprobeConfig } from '../engine/mutate';
 import type { OptimizationRule } from '../types';
 
@@ -13,7 +12,7 @@ import type { OptimizationRule } from '../types';
 function createTempFile(content: string, prefix = 'test-'): string {
     const dir = join(tmpdir(), 'gpu-opt-mutate-test');
     mkdirSync(dir, { recursive: true });
-    const filePath = join(dir, `${prefix}${randomBytes(4).toString('hex')}.conf`);
+    const filePath = join(dir, `${prefix}${crypto.randomUUID().slice(0, 8)}.conf`);
     writeFileSync(filePath, content, 'utf-8');
     return filePath;
 }

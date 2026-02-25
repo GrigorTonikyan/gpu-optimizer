@@ -16,6 +16,8 @@ function createProfile(overrides: Partial<SystemProfile> = {}): SystemProfile {
         bootloader: { type: 'Unknown', configPath: '' },
         initramfs: 'Unknown',
         memory: { hasZram: false, hasZswap: false },
+        cpuInfo: { model: 'Test CPU', cores: 4, usagePercent: 0 },
+        memoryStats: { total: 16 * 1024 * 1024 * 1024, used: 8 * 1024 * 1024 * 1024, free: 8 * 1024 * 1024 * 1024 },
         ...overrides,
     };
 }
@@ -23,7 +25,7 @@ function createProfile(overrides: Partial<SystemProfile> = {}): SystemProfile {
 describe('Optimization Matrix — Intel Rules', () => {
     it('generates i915 modprobe rules for Intel GPU with i915 driver', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'i915' }],
+            gpus: [{ vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'i915' }],
         });
 
         const plan = generateOptimizationPlan(profile);
@@ -37,7 +39,7 @@ describe('Optimization Matrix — Intel Rules', () => {
 
     it('generates xe force_probe rule as optional for i915 systems with PCI ID', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'i915' }],
+            gpus: [{ vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'i915' }],
         });
 
         const plan = generateOptimizationPlan(profile);
@@ -50,7 +52,7 @@ describe('Optimization Matrix — Intel Rules', () => {
 
     it('generates xe-active info rule when xe is already the driver', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'xe' }],
+            gpus: [{ vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'xe' }],
         });
 
         const plan = generateOptimizationPlan(profile);
@@ -64,7 +66,7 @@ describe('Optimization Matrix — Intel Rules', () => {
 describe('Optimization Matrix — NVIDIA Rules', () => {
     it('always generates nvidia-drm.modeset=1', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'NVIDIA', pciId: '10de:25a0', activeDriver: 'nvidia' }],
+            gpus: [{ vendor: 'NVIDIA', model: 'Test NVIDIA GPU', pciId: '10de:25a0', activeDriver: 'nvidia' }],
             displayServer: 'X11',
         });
 
@@ -78,7 +80,7 @@ describe('Optimization Matrix — NVIDIA Rules', () => {
 
     it('generates fbdev rule on Wayland', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'NVIDIA', pciId: '10de:25a0', activeDriver: 'nvidia' }],
+            gpus: [{ vendor: 'NVIDIA', model: 'Test NVIDIA GPU', pciId: '10de:25a0', activeDriver: 'nvidia' }],
             displayServer: 'Wayland',
         });
 
@@ -92,7 +94,7 @@ describe('Optimization Matrix — NVIDIA Rules', () => {
 
     it('does not generate fbdev rule on X11', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'NVIDIA', pciId: '10de:25a0', activeDriver: 'nvidia' }],
+            gpus: [{ vendor: 'NVIDIA', model: 'Test NVIDIA GPU', pciId: '10de:25a0', activeDriver: 'nvidia' }],
             displayServer: 'X11',
         });
 
@@ -104,7 +106,7 @@ describe('Optimization Matrix — NVIDIA Rules', () => {
 describe('Optimization Matrix — AMD Rules', () => {
     it('generates ppfeaturemask, sg_display, and tmz rules', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'AMD', pciId: '1002:744c', activeDriver: 'amdgpu' }],
+            gpus: [{ vendor: 'AMD', model: 'Test AMD GPU', pciId: '1002:744c', activeDriver: 'amdgpu' }],
         });
 
         const plan = generateOptimizationPlan(profile);
@@ -163,8 +165,8 @@ describe('Optimization Matrix — Hybrid Systems', () => {
     it('generates rules for both Intel and NVIDIA on hybrid', () => {
         const profile = createProfile({
             gpus: [
-                { vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'i915' },
-                { vendor: 'NVIDIA', pciId: '10de:25a0', activeDriver: 'nvidia' },
+                { vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'i915' },
+                { vendor: 'NVIDIA', model: 'Test NVIDIA GPU', pciId: '10de:25a0', activeDriver: 'nvidia' },
             ],
             isHybrid: true,
             displayServer: 'Wayland',
@@ -189,7 +191,7 @@ describe('Optimization Matrix — Edge Cases', () => {
 
     it('still generates rules for immutable systems (checked at apply-time)', () => {
         const profile = createProfile({
-            gpus: [{ vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'i915' }],
+            gpus: [{ vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'i915' }],
             isImmutable: true,
             immutableType: 'ostree',
         });
@@ -201,9 +203,9 @@ describe('Optimization Matrix — Edge Cases', () => {
     it('all rules have required fields populated', () => {
         const profile = createProfile({
             gpus: [
-                { vendor: 'Intel', pciId: '8086:9a60', activeDriver: 'i915' },
-                { vendor: 'NVIDIA', pciId: '10de:25a0', activeDriver: 'nvidia' },
-                { vendor: 'AMD', pciId: '1002:744c', activeDriver: 'amdgpu' },
+                { vendor: 'Intel', model: 'Test Intel GPU', pciId: '8086:9a60', activeDriver: 'i915' },
+                { vendor: 'NVIDIA', model: 'Test NVIDIA GPU', pciId: '10de:25a0', activeDriver: 'nvidia' },
+                { vendor: 'AMD', model: 'Test AMD GPU', pciId: '1002:744c', activeDriver: 'amdgpu' },
             ],
             displayServer: 'Wayland',
             memory: { hasZram: true, hasZswap: true },

@@ -106,7 +106,7 @@ The agent must implement the application sequentially following these stages:
 ### Stage 1: Scaffolding & Utility Layer
 
 * [ ] **1.1 Project Init:** Initialize Bun project, configure `tsconfig.json` for ESNext, Node resolution, and strict typing. Install `@clack/prompts`, `picocolors`, and `zod`.
-* [ ] **1.2 Shell Execution Wrapper (`src/utils/shell.ts`):** Create a robust wrapper around `node:child_process.execSync`.
+* [ ] **1.2 Shell Execution Wrapper (`src/utils/shell.ts`):** Create a robust wrapper around Native `Bun.spawnSync`.
   * Implement `runUser(cmd)`: Returns stdout.
   * Implement `runElevated(cmd)`: Wraps command in `sudo`.
   * Implement `writeElevated(path, content)`: Uses `echo "<content>" | sudo tee <path> > /dev/null` to safely write protected files.

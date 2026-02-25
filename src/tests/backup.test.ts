@@ -2,14 +2,13 @@ import { describe, it, expect, beforeEach, afterAll } from 'bun:test';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { randomBytes } from 'node:crypto';
 import { initBackupDir, createSnapshot, listSnapshots, rollback } from '../engine/backup';
 
 /**
  * Each test suite gets its own isolated temp directory to prevent
  * cross-test interference and avoid touching real system state.
  */
-const TEST_ROOT = join(tmpdir(), `gpu-opt-backup-test-${randomBytes(4).toString('hex')}`);
+const TEST_ROOT = join(tmpdir(), `gpu-opt-backup-test-${crypto.randomUUID().slice(0, 8)}`);
 const TEST_BACKUP_ROOT = join(TEST_ROOT, 'backups');
 const TEST_SOURCE_DIR = join(TEST_ROOT, 'source-files');
 

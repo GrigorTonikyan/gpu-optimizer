@@ -49,6 +49,7 @@ describe('Discovery — Hardware', () => {
 
         for (const gpu of gpus) {
             expect(['Intel', 'NVIDIA', 'AMD']).toContain(gpu.vendor);
+            expect(typeof gpu.model).toBe('string');
             expect(typeof gpu.pciId).toBe('string');
             expect(typeof gpu.activeDriver).toBe('string');
         }
@@ -118,5 +119,19 @@ describe('Discovery — Full Profile', () => {
         expect(['mkinitcpio', 'dracut', 'update-initramfs', 'Unknown']).toContain(profile.initramfs);
         expect(typeof profile.memory.hasZram).toBe('boolean');
         expect(typeof profile.memory.hasZswap).toBe('boolean');
+
+        expect(typeof profile.cpuInfo.model).toBe('string');
+        expect(typeof profile.cpuInfo.cores).toBe('number');
+        expect(profile.cpuInfo.cores).toBeGreaterThanOrEqual(1);
+        expect(typeof profile.cpuInfo.usagePercent).toBe('number');
+
+        expect(typeof profile.memoryStats.total).toBe('number');
+        expect(typeof profile.memoryStats.used).toBe('number');
+        expect(typeof profile.memoryStats.free).toBe('number');
+        expect(profile.memoryStats.total).toBeGreaterThan(0);
+
+        for (const gpu of profile.gpus) {
+            expect(typeof gpu.model).toBe('string');
+        }
     });
 });

@@ -4,7 +4,13 @@ import { detectBootloader } from './boot';
 import { detectInitramfs } from './initramfs';
 import { detectMemory } from './memory';
 import { detectImmutability } from './immutability';
+import { collectCpuInfo, collectMemoryStats, collectGpuStats } from './telemetry';
 
+/**
+ * Performs a full system discovery pass and returns a complete SystemProfile.
+ * Aggregates hardware detection, boot infrastructure resolution, memory
+ * profiling, immutability checks, and point-in-time telemetry snapshots.
+ */
 export async function discoverSystem(): Promise<SystemProfile> {
     const { gpus, isHybrid } = detectGPUs();
     const displayServer = detectDisplayServer();
@@ -14,8 +20,16 @@ export async function discoverSystem(): Promise<SystemProfile> {
     const memory = detectMemory();
     const { isImmutable, immutableType } = detectImmutability();
 
+    const cpuInfo = collectCpuInfo();
+    const memoryStats = collectMemoryStats();
+
+    const enrichedGpus = gpus.map(gpu => ({
+        ...gpu,
+        stats: collectGpuStats(gpu),
+    }));
+
     return {
-        gpus,
+        gpus: enrichedGpus,
         isHybrid,
         displayServer,
         isImmutable,
@@ -24,5 +38,8 @@ export async function discoverSystem(): Promise<SystemProfile> {
         bootloader,
         initramfs,
         memory,
+        cpuInfo,
+        memoryStats,
     };
 }
+

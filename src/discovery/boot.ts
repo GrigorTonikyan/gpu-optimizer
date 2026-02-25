@@ -1,5 +1,4 @@
 import { existsSync, readdirSync, readFileSync, accessSync, constants } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import type { BootloaderType } from '../types';
 
@@ -27,12 +26,9 @@ function isReadableDir(dirPath: string): boolean {
  */
 function runLenient(cmd: string): string {
     try {
-        return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-    } catch (e: any) {
-        /** execSync attaches stdout to the error when the process exits non-zero */
-        if (e.stdout && typeof e.stdout === 'string') {
-            return e.stdout.trim();
-        }
+        const { stdout } = Bun.spawnSync(['sh', '-c', cmd]);
+        return stdout.toString().trim();
+    } catch {
         return '';
     }
 }
