@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts';
 import { isCancel } from '@clack/prompts';
 import pc from 'picocolors';
+import { formatBytes } from './formatters';
 import {
     getStatusSnapshot,
     checkImmutability,
@@ -14,6 +15,7 @@ import {
     applyNvidiaPersistence,
     applyUdevPowerRule,
 } from '../controllers';
+import { loadConfig, saveConfig } from '../config';
 import type { SystemProfile } from '../types';
 
 /**
@@ -293,11 +295,134 @@ export async function cliRollback(): Promise<void> {
 }
 
 /**
- * Formats bytes to human-readable string.
+ * CLI passthrough: --detailed
+ * Prints an exhaustive system profile.
  */
-function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+export async function cliDetailedStatus(): Promise<void> {
+    const profile = await getStatusSnapshot();
+
+    console.log('');
+    console.log(pc.bold(pc.cyan('  ━━━ Detailed System Profile ━━━')));
+    console.log('');
+
+    // OS & Immutable State
+    console.log(pc.bold('  OS Architecture'));
+    console.log(`    Kernel Version:   ${pc.white(profile.kernelVersion)}`);
+    console.log(`    Display Server:   ${pc.white(profile.displayServer)}`);
+    console.log(`    Immutability:     ${profile.isImmutable ? pc.yellow(`Yes (${profile.immutableType})`) : pc.dim('No')}`);
+    console.log('');
+
+    // Boot Infrastructure
+    console.log(pc.bold('  Boot Infrastructure'));
+    console.log(`    Bootloader:       ${pc.white(profile.bootloader.type)}`);
+    console.log(`    Config Path:      ${pc.dim(profile.bootloader.configPath || 'N/A')}`);
+    console.log(`    Initramfs Gen:    ${pc.white(profile.initramfs)}`);
+    console.log('');
+
+    // CPU & Memory
+    console.log(pc.bold('  CPU & Memory'));
+    console.log(`    Model:            ${pc.white(profile.cpuInfo.model)}`);
+    console.log(`    Cores:            ${pc.white(profile.cpuInfo.cores.toString())}`);
+    console.log(`    Usage:            ${pc.white(`${profile.cpuInfo.usagePercent}%`)}`);
+    if (profile.cpuInfo.temperature) {
+        console.log(`    Package Temp:     ${pc.white(`${profile.cpuInfo.temperature}°C`)}`);
+    }
+    console.log(`    Physical RAM:     ${pc.white(formatBytes(profile.memoryStats.total))}`);
+    console.log(`    RAM Used:         ${pc.white(formatBytes(profile.memoryStats.used))}`);
+    console.log(`    RAM Free:         ${pc.white(formatBytes(profile.memoryStats.free))}`);
+    console.log(`    ZRAM Enabled:     ${profile.memory.hasZram ? pc.green('Yes') : pc.dim('No')}`);
+    console.log(`    ZSWAP Enabled:    ${profile.memory.hasZswap ? pc.yellow('Yes') : pc.dim('No')}`);
+    console.log('');
+
+    // GPUs
+    console.log(pc.bold('  Graphics Processing Units'));
+    if (profile.gpus.length === 0) {
+        console.log(pc.dim('    No GPUs detected'));
+    } else {
+        profile.gpus.forEach((gpu, index) => {
+            console.log(`    ${pc.bold(`GPU ${index + 1}`)}: ${pc.green(gpu.vendor)} ${pc.white(gpu.model)}`);
+            console.log(`      PCI ID:         ${pc.yellow(gpu.pciId)}`);
+            console.log(`      Active Driver:  ${gpu.activeDriver ? pc.cyan(gpu.activeDriver) : pc.dim('None')}`);
+
+            if (gpu.stats) {
+                if (gpu.stats.temperature !== undefined) console.log(`      Temperature:    ${pc.white(`${gpu.stats.temperature}°C`)}`);
+                if (gpu.stats.utilization !== undefined) console.log(`      Utilization:    ${pc.white(`${gpu.stats.utilization}%`)}`);
+                if (gpu.stats.vramTotal !== undefined) console.log(`      VRAM Total:     ${pc.white(formatBytes(gpu.stats.vramTotal))}`);
+                if (gpu.stats.vramUsed !== undefined) console.log(`      VRAM Used:      ${pc.white(formatBytes(gpu.stats.vramUsed))}`);
+            }
+            console.log('');
+        });
+    }
+
+    console.log(pc.bold(pc.cyan('  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')));
+    console.log('');
+}
+
+/**
+ * CLI passthrough: --list-backups
+ * Prints all available backups.
+ */
+export function cliListBackups(): void {
+    const snapshots = listBackups();
+    console.log('');
+    console.log(pc.bold(pc.cyan('  ━━━ Backup Snapshots ━━━')));
+    console.log('');
+
+    if (snapshots.length === 0) {
+        console.log(pc.dim('  No backups found.'));
+    } else {
+        for (const s of snapshots) {
+            console.log(`  ${pc.bold(pc.green(s.id))} │ ${pc.white(s.date)}`);
+            console.log(pc.dim(`    Contains ${s.files.length} file(s)`));
+            for (const f of s.files) {
+                console.log(pc.dim(`     - ${f.originalPath}`));
+            }
+            console.log('');
+        }
+    }
+    console.log(pc.bold(pc.cyan('  ━━━━━━━━━━━━━━━━━━━━━━━━')));
+    console.log('');
+}
+
+/**
+ * CLI passthrough: --config key=value
+ * Updates a configuration key.
+ */
+export function cliConfig(keyValueString: string): void {
+    const config = loadConfig();
+    const [key, rawValue] = keyValueString.split('=');
+
+    if (!key || rawValue === undefined) {
+        console.error(pc.red('Error: Invalid format. Use --config <key>=<value>'));
+        return;
+    }
+
+    const keyStr = key.trim() as keyof typeof config;
+    const valueStr = rawValue.trim();
+
+    if (!(keyStr in config)) {
+        console.error(pc.red(`Error: Unknown configuration key '${keyStr}'`));
+        return;
+    }
+
+    try {
+        // Simple type coercion based on current value type
+        const typeofVal = typeof config[keyStr];
+        let newVal: any = valueStr;
+
+        if (typeofVal === 'number') {
+            newVal = parseInt(valueStr, 10);
+            if (isNaN(newVal)) throw new Error('Must be a number');
+        } else if (typeofVal === 'boolean') {
+            newVal = valueStr === 'true' || valueStr === '1';
+        }
+
+        // Apply and save
+        (config as any)[keyStr] = newVal;
+        saveConfig(config);
+
+        console.log(pc.green(`✓ Configuration updated: ${keyStr} = ${newVal}`));
+    } catch (e: any) {
+        console.error(pc.red(`Error saving config: ${e.message}`));
+    }
 }
