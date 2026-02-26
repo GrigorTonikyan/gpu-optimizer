@@ -1,8 +1,6 @@
-import termkit from 'terminal-kit';
+import pc from 'picocolors';
+import { terminal } from './terminal';
 import { getSettings } from '../controllers';
-import { THEME } from './helpers';
-
-const term = termkit.terminal;
 
 /** Tracks whether the TUI is currently active (in alternate buffer) */
 let isActive = false;
@@ -14,27 +12,27 @@ let isActive = false;
 function renderHeader(): void {
     const config = getSettings();
 
-    term.moveTo(1, 1);
-    term.eraseLine();
-    term.bold.cyan(' ⚡ Universal GPU Optimizer ');
-    term.dim(' v0.3.0 ');
+    terminal.moveTo(1, 1);
+    terminal.eraseLine();
+    terminal.write(pc.bold(pc.cyan(' ⚡ Universal GPU Optimizer ')));
+    terminal.write(pc.dim(' v0.3.0 '));
 
     if (config.dryMode) {
-        term(' ');
-        term.bgYellow.black.bold(' DRY MODE ');
+        terminal.write(' ');
+        terminal.bgYellowBlack(' DRY MODE ');
     }
 
-    term.moveTo(1, 2);
-    term.dim('─'.repeat(term.width));
+    terminal.moveTo(1, 2);
+    terminal.write(pc.dim('─'.repeat(terminal.width)));
 }
 
 /**
  * Renders the persistent footer bar with keybinding hints.
  */
 function renderFooter(): void {
-    term.moveTo(1, term.height);
-    term.eraseLine();
-    term.dim(' ↑↓ Navigate  │  Enter Select  │  q Back  │  Ctrl+C Exit');
+    terminal.moveTo(1, terminal.height);
+    terminal.eraseLine();
+    terminal.write(pc.dim(' ↑↓ Navigate  │  Enter Select  │  q Back  │  Ctrl+C Exit'));
 }
 
 /**
@@ -42,9 +40,9 @@ function renderFooter(): void {
  * Returns the starting row for content rendering.
  */
 export function clearContent(): number {
-    for (let row = 3; row < term.height; row++) {
-        term.moveTo(1, row);
-        term.eraseLine();
+    for (let row = 3; row < terminal.height; row++) {
+        terminal.moveTo(1, row);
+        terminal.eraseLine();
     }
     return 4;
 }
@@ -59,7 +57,7 @@ export function refreshChrome(): void {
 
 /**
  * Starts the TUI application.
- * Switches to alternate screen buffer, enables raw mode and mouse input,
+ * Switches to alternate screen buffer, enables raw mode,
  * and renders the initial chrome.
  *
  * @param onExit - Callback invoked when the user requests application exit
@@ -68,14 +66,14 @@ export function startApp(onExit: () => void): void {
     if (isActive) return;
     isActive = true;
 
-    term.fullscreen(true);
-    term.grabInput({ mouse: 'button' });
-    term.hideCursor();
+    terminal.fullscreen(true);
+    terminal.rawMode(true);
+    terminal.hideCursor(true);
 
     renderHeader();
     renderFooter();
 
-    term.on('key', (key: string) => {
+    terminal.onKey((key: string) => {
         if (key === 'CTRL_C') {
             stopApp();
             onExit();
@@ -92,22 +90,15 @@ export function stopApp(): void {
     if (!isActive) return;
     isActive = false;
 
-    term.grabInput(false);
-    term.hideCursor(false);
-    term.fullscreen(false);
-    term.styleReset();
-}
-
-/**
- * Returns the terminal-kit terminal instance for direct access.
- */
-export function getTerm(): typeof term {
-    return term;
+    terminal.rawMode(false);
+    terminal.hideCursor(false);
+    terminal.fullscreen(false);
+    terminal.styleReset();
 }
 
 /**
  * Returns the usable content height (total height minus header and footer).
  */
 export function getContentHeight(): number {
-    return term.height - 4;
+    return terminal.height - 4;
 }

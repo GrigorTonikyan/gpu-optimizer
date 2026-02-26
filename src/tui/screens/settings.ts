@@ -1,5 +1,7 @@
-import { getTerm, clearContent, refreshChrome } from '../app';
-import { getSettings, updateSettings, resetSettings, getDefaults } from '../../controllers';
+import pc from 'picocolors';
+import { terminal } from '../terminal';
+import { clearContent, refreshChrome } from '../app';
+import { getSettings, updateSettings, resetSettings } from '../../controllers';
 import type { AppConfig } from '../../types';
 
 /**
@@ -8,7 +10,6 @@ import type { AppConfig } from '../../types';
  * and persist changes immediately.
  */
 export async function showSettings(): Promise<void> {
-    const term = getTerm();
     let config = getSettings();
     let cursor = 0;
 
@@ -30,10 +31,10 @@ export async function showSettings(): Promise<void> {
         clearContent();
 
         let row = 4;
-        term.moveTo(3, row++);
-        term.bold.cyan('Settings');
-        term.moveTo(3, row++);
-        term.dim('↑↓ Navigate  │  Enter: Edit  │  r: Reset to defaults  │  q: Back');
+        terminal.moveTo(3, row++);
+        terminal.write(pc.bold(pc.cyan('Settings')));
+        terminal.moveTo(3, row++);
+        terminal.write(pc.dim('↑↓ Navigate  │  Enter: Edit  │  r: Reset to defaults  │  q: Back'));
         row++;
 
         for (let i = 0; i < fields.length; i++) {
@@ -41,23 +42,23 @@ export async function showSettings(): Promise<void> {
             const isCursor = i === cursor;
             const value = config[field.key];
 
-            term.moveTo(3, row + i);
+            terminal.moveTo(3, row + i);
 
             if (isCursor) {
-                term.bgCyan.black(' ▸ ');
+                terminal.bgCyanBlack(' ▸ ');
             } else {
-                term('   ');
+                terminal.write('   ');
             }
 
-            term(` ${field.label}: `);
+            terminal.write(` ${field.label}: `);
 
             if (field.type === 'toggle') {
-                value ? term.green.bold('ON') : term.dim('OFF');
+                terminal.write(value ? pc.bold(pc.green('ON')) : pc.dim('OFF'));
             } else if (field.type === 'select') {
                 const idx = value as number;
-                term.bold(field.options?.[idx] ?? String(value));
+                terminal.write(pc.bold(field.options?.[idx] ?? String(value)));
             } else {
-                term.bold(String(value));
+                terminal.write(pc.bold(String(value)));
             }
         }
     }
@@ -67,7 +68,7 @@ export async function showSettings(): Promise<void> {
     return new Promise<void>((resolve) => {
         const handler = async (key: string) => {
             if (key === 'q' || key === 'ESCAPE') {
-                term.removeListener('key', handler);
+                terminal.removeKeyListener(handler);
                 resolve();
                 return;
             }
@@ -103,27 +104,25 @@ export async function showSettings(): Promise<void> {
                     config = updateSettings({ [field.key]: next });
                     render();
                 } else if (field.type === 'text') {
-                    term.removeListener('key', handler);
+                    terminal.removeKeyListener(handler);
 
                     const editRow = 4 + 3 + cursor;
-                    term.moveTo(3, editRow + fields.length + 2);
-                    term(`New value for ${field.label}: `);
+                    terminal.moveTo(3, editRow + fields.length + 2);
+                    terminal.write(`New value for ${field.label}: `);
 
-                    const newValue = await new Promise<string>((resolveInput) => {
-                        term.inputField({
-                            default: String(config[field.key]),
-                            cancelable: true,
-                        }, (error: any, input: any) => {
-                            resolveInput(input ?? String(config[field.key]));
-                        });
+                    const newValue = await terminal.inputField({
+                        default: String(config[field.key]),
+                        cancelable: true,
                     });
 
-                    config = updateSettings({ [field.key]: newValue.trim() });
+                    if (newValue) {
+                        config = updateSettings({ [field.key]: newValue.trim() });
+                    }
                     render();
-                    term.on('key', handler);
+                    terminal.onKey(handler);
                 }
             }
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
     });
 }

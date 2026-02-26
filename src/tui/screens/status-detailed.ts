@@ -1,4 +1,6 @@
-import { getTerm, clearContent, refreshChrome, getContentHeight } from '../app';
+import pc from 'picocolors';
+import { terminal } from '../terminal';
+import { clearContent, refreshChrome, getContentHeight } from '../app';
 import { formatBytes, formatTemp, formatPercent } from '../helpers';
 import type { SystemProfile } from '../../types';
 
@@ -10,7 +12,6 @@ import type { SystemProfile } from '../../types';
  * @param profile - The SystemProfile snapshot to display
  */
 export async function showDetailedStatus(profile: SystemProfile): Promise<void> {
-    const term = getTerm();
     const lines = buildDetailLines(profile);
 
     let scrollOffset = 0;
@@ -24,12 +25,12 @@ export async function showDetailedStatus(profile: SystemProfile): Promise<void> 
         const visible = lines.slice(scrollOffset, scrollOffset + contentHeight);
 
         for (let i = 0; i < visible.length; i++) {
-            term.moveTo(3, 4 + i);
-            term(visible[i]);
+            terminal.moveTo(3, 4 + i);
+            terminal.write(visible[i]!);
         }
 
-        term.moveTo(3, term.height - 1);
-        term.dim(`  Lines ${scrollOffset + 1}–${Math.min(scrollOffset + contentHeight, lines.length)} of ${lines.length}  │  ↑↓ Scroll  │  q Back`);
+        terminal.moveTo(3, terminal.height - 1);
+        terminal.write(pc.dim(`  Lines ${scrollOffset + 1}–${Math.min(scrollOffset + contentHeight, lines.length)} of ${lines.length}  │  ↑↓ Scroll  │  q Back`));
     }
 
     render();
@@ -37,7 +38,7 @@ export async function showDetailedStatus(profile: SystemProfile): Promise<void> 
     return new Promise<void>((resolve) => {
         const handler = (key: string) => {
             if (key === 'q' || key === 'ESCAPE') {
-                term.removeListener('key', handler);
+                terminal.removeKeyListener(handler);
                 resolve();
                 return;
             }
@@ -58,7 +59,7 @@ export async function showDetailedStatus(profile: SystemProfile): Promise<void> 
                 render();
             }
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
     });
 }
 

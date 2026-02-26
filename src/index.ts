@@ -5,7 +5,7 @@ import { loadConfig, saveConfig } from './config';
  * Application entry point for the Universal GPU Optimizer.
  *
  * Dispatches to one of three interfaces based on CLI flags:
- * - No flags or `--tui` → Interactive TUI (terminal-kit, fullscreen)
+ * - No flags or `--tui` → Interactive TUI (fullscreen)
  * - `--status`          → Print system status and exit
  * - `--detailed`        → Print detailed system profile and exit
  * - `--apply`           → Interactive apply flow (clack/prompts)
@@ -18,7 +18,7 @@ import { loadConfig, saveConfig } from './config';
  * - `--dry-run`         → Enables dry mode for the current session
  *
  * The existing @clack/prompts CLI is preserved as the CLI passthrough layer,
- * while the TUI provides a persistent fullscreen experience via terminal-kit.
+ * while the TUI provides a persistent fullscreen experience.
  */
 async function main(): Promise<void> {
     const args = Bun.argv.slice(2);

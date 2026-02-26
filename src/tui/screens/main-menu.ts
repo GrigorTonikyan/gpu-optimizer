@@ -1,19 +1,19 @@
-import { getTerm, clearContent, refreshChrome } from '../app';
+import pc from 'picocolors';
+import { terminal } from '../terminal';
+import { clearContent, refreshChrome } from '../app';
 
 /**
  * Displays the TUI main menu and waits for user selection.
- * Uses terminal-kit single-column menu with arrow key and mouse navigation.
+ * Uses an interactive single-column menu with arrow key navigation.
  *
  * @returns The selected menu action, or 'exit' if the user chose to quit
  */
 export async function showMainMenu(): Promise<string> {
-    const term = getTerm();
-
     refreshChrome();
     const startRow = clearContent();
 
-    term.moveTo(3, startRow);
-    term.bold.cyan('Main Menu\n');
+    terminal.moveTo(3, startRow);
+    terminal.write(pc.bold(pc.cyan('Main Menu\n')));
 
     const menuItems = [
         '📊  Brief Status',
@@ -33,25 +33,19 @@ export async function showMainMenu(): Promise<string> {
         5: 'exit',
     };
 
-    return new Promise<string>((resolve) => {
-        term.singleColumnMenu(menuItems, {
-            y: startRow + 2,
-            selectedStyle: term.bold.bgCyan.black,
-            style: term.white,
-            cancelable: true,
-            exitOnUnexpectedKey: true,
-        }, (error: any, response: any) => {
-            if (error || !response || response.canceled) {
-                resolve('exit');
-                return;
-            }
-
-            if (response.unexpectedKey === 'q' || response.unexpectedKey === 'ESCAPE') {
-                resolve('exit');
-                return;
-            }
-
-            resolve(actionMap[response.selectedIndex] ?? 'exit');
-        });
+    const response = await terminal.singleColumnMenu(menuItems, {
+        y: startRow + 2,
+        cancelable: true,
+        exitOnUnexpectedKey: true,
     });
+
+    if (response.canceled) {
+        return 'exit';
+    }
+
+    if (response.unexpectedKey === 'q' || response.unexpectedKey === 'ESCAPE') {
+        return 'exit';
+    }
+
+    return actionMap[response.selectedIndex] ?? 'exit';
 }

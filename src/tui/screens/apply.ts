@@ -1,4 +1,6 @@
-import { getTerm, clearContent, refreshChrome } from '../app';
+import pc from 'picocolors';
+import { terminal } from '../terminal';
+import { clearContent, refreshChrome } from '../app';
 import { analyzeOptimizations, checkImmutability, stageOptimizations, applyMutations, rebuildInitramfs } from '../../controllers';
 import type { SystemProfile, OptimizationRule } from '../../types';
 
@@ -14,18 +16,16 @@ import type { SystemProfile, OptimizationRule } from '../../types';
  * @param profile - The discovered SystemProfile
  */
 export async function showApplyFlow(profile: SystemProfile): Promise<void> {
-    const term = getTerm();
-
     const immutableMsg = checkImmutability(profile);
     if (immutableMsg) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.yellow('⚠  Immutable System Detected');
-        term.moveTo(3, 6);
-        term(immutableMsg);
-        term.moveTo(3, 8);
-        term.dim('Press any key to go back...');
+        terminal.moveTo(3, 4);
+        terminal.write(pc.yellow('⚠  Immutable System Detected'));
+        terminal.moveTo(3, 6);
+        terminal.write(immutableMsg);
+        terminal.moveTo(3, 8);
+        terminal.write(pc.dim('Press any key to go back...'));
         await waitForKey();
         return;
     }
@@ -35,10 +35,10 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
     if (analysis.totalRules === 0) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term('No optimizations to apply for this system.');
-        term.moveTo(3, 6);
-        term.dim('Press any key to go back...');
+        terminal.moveTo(3, 4);
+        terminal.write('No optimizations to apply for this system.');
+        terminal.moveTo(3, 6);
+        terminal.write(pc.dim('Press any key to go back...'));
         await waitForKey();
         return;
     }
@@ -52,10 +52,10 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         clearContent();
 
         let row = 4;
-        term.moveTo(3, row++);
-        term.bold.cyan(`Apply Optimizations (${analysis.totalRules} available)`);
-        term.moveTo(3, row++);
-        term.dim('Space: toggle  │  i: info  │  Enter: apply selected  │  q: cancel');
+        terminal.moveTo(3, row++);
+        terminal.write(pc.bold(pc.cyan(`Apply Optimizations (${analysis.totalRules} available)`)));
+        terminal.moveTo(3, row++);
+        terminal.write(pc.dim('Space: toggle  │  i: info  │  Enter: apply selected  │  q: cancel'));
         row++;
 
         for (let i = 0; i < allRules.length; i++) {
@@ -64,33 +64,33 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
             const isCursor = i === cursor;
             const isRecommended = rule.severity === 'recommended';
 
-            term.moveTo(3, row + i);
+            terminal.moveTo(3, row + i);
 
             if (isCursor) {
-                term.bgCyan.black(' ▸ ');
+                terminal.bgCyanBlack(' ▸ ');
             } else {
-                term('   ');
+                terminal.write('   ');
             }
 
-            term(isSelected ? ' [✓] ' : ' [ ] ');
+            terminal.write(isSelected ? ' [✓] ' : ' [ ] ');
 
             if (isRecommended) {
-                term.green('[REC] ');
+                terminal.write(pc.green('[REC] '));
             } else {
-                term.dim('[OPT] ');
+                terminal.write(pc.dim('[OPT] '));
             }
 
             if (isCursor) {
-                term.bold(rule.description);
+                terminal.write(pc.bold(rule.description));
             } else {
-                term(rule.description);
+                terminal.write(rule.description);
             }
         }
 
         const infoRow = row + allRules.length + 2;
         if (allRules[cursor]) {
-            term.moveTo(3, infoRow);
-            term.dim(`Value: ${allRules[cursor]!.value}`);
+            terminal.moveTo(3, infoRow);
+            terminal.write(pc.dim(`Value: ${allRules[cursor]!.value}`));
         }
     }
 
@@ -99,7 +99,7 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
     const action = await new Promise<string>((resolve) => {
         const handler = (key: string) => {
             if (key === 'q' || key === 'ESCAPE') {
-                term.removeListener('key', handler);
+                terminal.removeKeyListener(handler);
                 resolve('cancel');
                 return;
             }
@@ -121,15 +121,15 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
                 render();
             }
             if (key === 'i') {
-                term.removeListener('key', handler);
+                terminal.removeKeyListener(handler);
                 resolve('info');
             }
             if (key === 'ENTER') {
-                term.removeListener('key', handler);
+                terminal.removeKeyListener(handler);
                 resolve('apply');
             }
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
     });
 
     if (action === 'cancel') return;
@@ -145,10 +145,10 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         if (selectedRules.length === 0) {
             refreshChrome();
             clearContent();
-            term.moveTo(3, 4);
-            term('No optimizations selected.');
-            term.moveTo(3, 6);
-            term.dim('Press any key to go back...');
+            terminal.moveTo(3, 4);
+            terminal.write('No optimizations selected.');
+            terminal.moveTo(3, 6);
+            terminal.write(pc.dim('Press any key to go back...'));
             await waitForKey();
             return;
         }
@@ -159,52 +159,52 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         clearContent();
 
         let row = 4;
-        term.moveTo(3, row++);
-        term.bold.cyan('Proposed Changes');
+        terminal.moveTo(3, row++);
+        terminal.write(pc.bold(pc.cyan('Proposed Changes')));
         row++;
 
         for (const w of warnings) {
-            term.moveTo(3, row++);
-            term.yellow(`⚠  ${w}`);
+            terminal.moveTo(3, row++);
+            terminal.write(pc.yellow(`⚠  ${w}`));
         }
 
         if (mutations.length === 0) {
-            term.moveTo(3, row++);
-            term('No file mutations to apply.');
-            term.moveTo(3, row + 1);
-            term.dim('Press any key to go back...');
+            terminal.moveTo(3, row++);
+            terminal.write('No file mutations to apply.');
+            terminal.moveTo(3, row + 1);
+            terminal.write(pc.dim('Press any key to go back...'));
             await waitForKey();
             return;
         }
 
         for (const mut of mutations) {
-            term.moveTo(3, row++);
-            term.bold(`File: ${mut.targetPath}`);
-            term.moveTo(3, row++);
-            term.dim('─'.repeat(46));
+            terminal.moveTo(3, row++);
+            terminal.write(pc.bold(`File: ${mut.targetPath}`));
+            terminal.moveTo(3, row++);
+            terminal.write(pc.dim('─'.repeat(46)));
             for (const line of mut.diff.split('\n').slice(0, 15)) {
-                term.moveTo(3, row++);
-                term(`  ${line}`);
+                terminal.moveTo(3, row++);
+                terminal.write(`  ${line}`);
             }
-            term.moveTo(3, row++);
-            term.dim('─'.repeat(46));
+            terminal.moveTo(3, row++);
+            terminal.write(pc.dim('─'.repeat(46)));
             row++;
         }
 
-        term.moveTo(3, row++);
-        term.bold('Apply these changes? (requires sudo) [y/N] ');
+        terminal.moveTo(3, row++);
+        terminal.write(pc.bold('Apply these changes? (requires sudo) [y/N] '));
 
         const confirmed = await new Promise<boolean>((resolve) => {
             const handler = (key: string) => {
-                term.removeListener('key', handler);
+                terminal.removeKeyListener(handler);
                 resolve(key === 'y' || key === 'Y');
             };
-            term.on('key', handler);
+            terminal.onKey(handler);
         });
 
         if (!confirmed) {
-            term.moveTo(3, row + 1);
-            term.yellow('Changes not applied.');
+            terminal.moveTo(3, row + 1);
+            terminal.write(pc.yellow('Changes not applied.'));
             await waitForKeyWithDelay(1500);
             return;
         }
@@ -215,47 +215,47 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         row = 4;
 
         if (result.success) {
-            term.moveTo(3, row++);
-            term.green('✓ Changes applied successfully!');
-            term.moveTo(3, row++);
-            term.dim(`Backup ID: ${result.backupId}`);
+            terminal.moveTo(3, row++);
+            terminal.write(pc.green('✓ Changes applied successfully!'));
+            terminal.moveTo(3, row++);
+            terminal.write(pc.dim(`Backup ID: ${result.backupId}`));
             row++;
 
             if (profile.initramfs !== 'Unknown') {
-                term.moveTo(3, row++);
-                term(`Rebuild initramfs using ${profile.initramfs}? [y/N] `);
+                terminal.moveTo(3, row++);
+                terminal.write(`Rebuild initramfs using ${profile.initramfs}? [y/N] `);
 
                 const shouldRebuild = await new Promise<boolean>((resolve) => {
                     const handler = (key: string) => {
-                        term.removeListener('key', handler);
+                        terminal.removeKeyListener(handler);
                         resolve(key === 'y' || key === 'Y');
                     };
-                    term.on('key', handler);
+                    terminal.onKey(handler);
                 });
 
                 if (shouldRebuild) {
                     try {
                         rebuildInitramfs(profile);
-                        term.moveTo(3, row++);
-                        term.green('✓ Initramfs rebuilt successfully.');
+                        terminal.moveTo(3, row++);
+                        terminal.write(pc.green('✓ Initramfs rebuilt successfully.'));
                     } catch (e: any) {
-                        term.moveTo(3, row++);
-                        term.red(`✗ Rebuild failed: ${e.message}`);
+                        terminal.moveTo(3, row++);
+                        terminal.write(pc.red(`✗ Rebuild failed: ${e.message}`));
                     }
                 }
             }
 
-            term.moveTo(3, row + 1);
-            term.green.bold('All optimizations applied!');
+            terminal.moveTo(3, row + 1);
+            terminal.write(pc.bold(pc.green('All optimizations applied!')));
         } else {
-            term.moveTo(3, row++);
-            term.red(`✗ Apply failed: ${result.error}`);
-            term.moveTo(3, row++);
-            term('Your backup is safe. Use Rollback to restore if needed.');
+            terminal.moveTo(3, row++);
+            terminal.write(pc.red(`✗ Apply failed: ${result.error}`));
+            terminal.moveTo(3, row++);
+            terminal.write('Your backup is safe. Use Rollback to restore if needed.');
         }
 
-        term.moveTo(3, row + 2);
-        term.dim('Press any key to continue...');
+        terminal.moveTo(3, row + 2);
+        terminal.write(pc.dim('Press any key to continue...'));
         await waitForKey();
     }
 }
@@ -264,30 +264,29 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
  * Shows detailed information about a specific optimization rule.
  */
 async function showRuleInfo(rule: OptimizationRule): Promise<void> {
-    const term = getTerm();
     refreshChrome();
     clearContent();
 
     let row = 4;
-    term.moveTo(3, row++);
-    term.bold.cyan('Optimization Details');
+    terminal.moveTo(3, row++);
+    terminal.write(pc.bold(pc.cyan('Optimization Details')));
     row++;
-    term.moveTo(3, row++);
-    term.bold(`ID:          ${rule.id}`);
-    term.moveTo(3, row++);
-    term(`Vendor:      ${rule.vendor}`);
-    term.moveTo(3, row++);
-    term(`Description: ${rule.description}`);
-    term.moveTo(3, row++);
-    term(`Target:      ${rule.target}`);
-    term.moveTo(3, row++);
-    term(`Value:       ${rule.value}`);
-    term.moveTo(3, row++);
-    term(`Severity:    `);
-    rule.severity === 'recommended' ? term.green('Recommended') : term.dim('Optional');
+    terminal.moveTo(3, row++);
+    terminal.write(pc.bold(`ID:          ${rule.id}`));
+    terminal.moveTo(3, row++);
+    terminal.write(`Vendor:      ${rule.vendor}`);
+    terminal.moveTo(3, row++);
+    terminal.write(`Description: ${rule.description}`);
+    terminal.moveTo(3, row++);
+    terminal.write(`Target:      ${rule.target}`);
+    terminal.moveTo(3, row++);
+    terminal.write(`Value:       ${rule.value}`);
+    terminal.moveTo(3, row++);
+    terminal.write(`Severity:    `);
+    terminal.write(rule.severity === 'recommended' ? pc.green('Recommended') : pc.dim('Optional'));
 
-    term.moveTo(3, row + 2);
-    term.dim('Press any key to go back...');
+    terminal.moveTo(3, row + 2);
+    terminal.write(pc.dim('Press any key to go back...'));
     await waitForKey();
 }
 
@@ -295,13 +294,12 @@ async function showRuleInfo(rule: OptimizationRule): Promise<void> {
  * Waits for any single keypress.
  */
 function waitForKey(): Promise<void> {
-    const term = getTerm();
     return new Promise<void>((resolve) => {
         const handler = () => {
-            term.removeListener('key', handler);
+            terminal.removeKeyListener(handler);
             resolve();
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
     });
 }
 
@@ -309,20 +307,19 @@ function waitForKey(): Promise<void> {
  * Waits for a keypress or a timeout, whichever comes first.
  */
 function waitForKeyWithDelay(ms: number): Promise<void> {
-    const term = getTerm();
     return new Promise<void>((resolve) => {
         let resolved = false;
         const handler = () => {
             if (resolved) return;
             resolved = true;
-            term.removeListener('key', handler);
+            terminal.removeKeyListener(handler);
             resolve();
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
         setTimeout(() => {
             if (!resolved) {
                 resolved = true;
-                term.removeListener('key', handler);
+                terminal.removeKeyListener(handler);
                 resolve();
             }
         }, ms);

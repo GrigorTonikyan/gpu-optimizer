@@ -1,24 +1,24 @@
-import { getTerm, clearContent, refreshChrome } from '../app';
+import pc from 'picocolors';
+import { terminal } from '../terminal';
+import { clearContent, refreshChrome } from '../app';
 import { listBackups, deleteBackup, rollbackToSnapshot, exportBackup, importBackup } from '../../controllers';
 import { rebuildInitramfs } from '../../controllers';
 import type { SystemProfile } from '../../types';
 
 /**
  * TUI screen for backup management.
- * Provides submenu for: Create (manual), List/View, Delete, Export, Import, Rollback.
+ * Provides submenu for: List/View, Delete, Export, Import, Rollback.
  *
  * @param profile - The SystemProfile (needed for initramfs rebuild after rollback)
  */
 export async function showBackupManagement(profile: SystemProfile): Promise<void> {
-    const term = getTerm();
-
     while (true) {
         refreshChrome();
         clearContent();
 
         let row = 4;
-        term.moveTo(3, row++);
-        term.bold.cyan('Backup Management');
+        terminal.moveTo(3, row++);
+        terminal.write(pc.bold(pc.cyan('Backup Management')));
         row++;
 
         const menuItems = [
@@ -30,25 +30,15 @@ export async function showBackupManagement(profile: SystemProfile): Promise<void
             '← Back',
         ];
 
-        const action = await new Promise<number>((resolve) => {
-            term.singleColumnMenu(menuItems, {
-                y: row,
-                selectedStyle: term.bold.bgCyan.black,
-                style: term.white,
-                cancelable: true,
-                exitOnUnexpectedKey: true,
-            }, (error: any, response: any) => {
-                if (error || !response || response.canceled) {
-                    resolve(5);
-                    return;
-                }
-                if (response.unexpectedKey === 'q' || response.unexpectedKey === 'ESCAPE') {
-                    resolve(5);
-                    return;
-                }
-                resolve(response.selectedIndex);
-            });
+        const response = await terminal.singleColumnMenu(menuItems, {
+            y: row,
+            cancelable: true,
+            exitOnUnexpectedKey: true,
         });
+
+        const action = response.canceled ? 5
+            : (response.unexpectedKey === 'q' || response.unexpectedKey === 'ESCAPE') ? 5
+                : response.selectedIndex;
 
         if (action === 5) return;
 
@@ -70,31 +60,30 @@ export async function showBackupManagement(profile: SystemProfile): Promise<void
  * Lists all backups in a formatted view.
  */
 async function showBackupList(): Promise<void> {
-    const term = getTerm();
     refreshChrome();
     clearContent();
 
     const backups = listBackups();
     let row = 4;
 
-    term.moveTo(3, row++);
-    term.bold.cyan('Available Backups');
+    terminal.moveTo(3, row++);
+    terminal.write(pc.bold(pc.cyan('Available Backups')));
     row++;
 
     if (backups.length === 0) {
-        term.moveTo(3, row++);
-        term.dim('No backups found.');
+        terminal.moveTo(3, row++);
+        terminal.write(pc.dim('No backups found.'));
     } else {
         for (const backup of backups) {
-            term.moveTo(3, row++);
-            term.bold(backup.id);
-            term(`  │  ${backup.date}  │  ${backup.files.length} file(s)`);
+            terminal.moveTo(3, row++);
+            terminal.write(pc.bold(backup.id));
+            terminal.write(`  │  ${backup.date}  │  ${backup.files.length} file(s)`);
         }
     }
 
     row += 2;
-    term.moveTo(3, row);
-    term.dim('Press any key to go back...');
+    terminal.moveTo(3, row);
+    terminal.write(pc.dim('Press any key to go back...'));
     await waitForKey();
 }
 
@@ -102,16 +91,15 @@ async function showBackupList(): Promise<void> {
  * Allows the user to select and delete a backup.
  */
 async function showDeleteBackup(): Promise<void> {
-    const term = getTerm();
     const backups = listBackups();
 
     if (backups.length === 0) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.dim('No backups to delete.');
-        term.moveTo(3, 6);
-        term.dim('Press any key to go back...');
+        terminal.moveTo(3, 4);
+        terminal.write(pc.dim('No backups to delete.'));
+        terminal.moveTo(3, 6);
+        terminal.write(pc.dim('Press any key to go back...'));
         await waitForKey();
         return;
     }
@@ -120,27 +108,20 @@ async function showDeleteBackup(): Promise<void> {
     clearContent();
 
     let row = 4;
-    term.moveTo(3, row++);
-    term.bold.cyan('Delete Backup');
+    terminal.moveTo(3, row++);
+    terminal.write(pc.bold(pc.cyan('Delete Backup')));
     row++;
 
     const items = backups.map(b => `${b.date} (${b.files.length} files) — ${b.id}`);
     items.push('← Cancel');
 
-    const selected = await new Promise<number>((resolve) => {
-        term.singleColumnMenu(items, {
-            y: row,
-            selectedStyle: term.bold.bgRed.white,
-            style: term.white,
-            cancelable: true,
-        }, (error: any, response: any) => {
-            if (error || !response || response.canceled) {
-                resolve(items.length - 1);
-                return;
-            }
-            resolve(response.selectedIndex);
-        });
+    const response = await terminal.singleColumnMenu(items, {
+        y: row,
+        selectedBg: 'red',
+        cancelable: true,
     });
+
+    const selected = response.canceled ? items.length - 1 : response.selectedIndex;
 
     if (selected >= backups.length) return;
 
@@ -148,28 +129,28 @@ async function showDeleteBackup(): Promise<void> {
 
     refreshChrome();
     clearContent();
-    term.moveTo(3, 4);
-    term.red.bold(`Delete backup ${backup.id}? [y/N] `);
+    terminal.moveTo(3, 4);
+    terminal.write(pc.bold(pc.red(`Delete backup ${backup.id}? [y/N] `)));
 
     const confirmed = await new Promise<boolean>((resolve) => {
         const handler = (key: string) => {
-            term.removeListener('key', handler);
+            terminal.removeKeyListener(handler);
             resolve(key === 'y' || key === 'Y');
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
     });
 
     if (confirmed) {
         try {
             deleteBackup(backup.id);
-            term.moveTo(3, 6);
-            term.green('✓ Backup deleted.');
+            terminal.moveTo(3, 6);
+            terminal.write(pc.green('✓ Backup deleted.'));
         } catch (e: any) {
-            term.moveTo(3, 6);
-            term.red(`✗ ${e.message}`);
+            terminal.moveTo(3, 6);
+            terminal.write(pc.red(`✗ ${e.message}`));
         }
-        term.moveTo(3, 8);
-        term.dim('Press any key...');
+        terminal.moveTo(3, 8);
+        terminal.write(pc.dim('Press any key...'));
         await waitForKey();
     }
 }
@@ -178,16 +159,15 @@ async function showDeleteBackup(): Promise<void> {
  * Export a backup to a tar.gz file.
  */
 async function showExportBackup(): Promise<void> {
-    const term = getTerm();
     const backups = listBackups();
 
     if (backups.length === 0) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.dim('No backups to export.');
-        term.moveTo(3, 6);
-        term.dim('Press any key...');
+        terminal.moveTo(3, 4);
+        terminal.write(pc.dim('No backups to export.'));
+        terminal.moveTo(3, 6);
+        terminal.write(pc.dim('Press any key...'));
         await waitForKey();
         return;
     }
@@ -196,27 +176,19 @@ async function showExportBackup(): Promise<void> {
     clearContent();
 
     let row = 4;
-    term.moveTo(3, row++);
-    term.bold.cyan('Export Backup');
+    terminal.moveTo(3, row++);
+    terminal.write(pc.bold(pc.cyan('Export Backup')));
     row++;
 
     const items = backups.map(b => `${b.date} — ${b.id}`);
     items.push('← Cancel');
 
-    const selected = await new Promise<number>((resolve) => {
-        term.singleColumnMenu(items, {
-            y: row,
-            selectedStyle: term.bold.bgCyan.black,
-            style: term.white,
-            cancelable: true,
-        }, (error: any, response: any) => {
-            if (error || !response || response.canceled) {
-                resolve(items.length - 1);
-                return;
-            }
-            resolve(response.selectedIndex);
-        });
+    const response = await terminal.singleColumnMenu(items, {
+        y: row,
+        cancelable: true,
     });
+
+    const selected = response.canceled ? items.length - 1 : response.selectedIndex;
 
     if (selected >= backups.length) return;
 
@@ -227,17 +199,17 @@ async function showExportBackup(): Promise<void> {
         exportBackup(backup.id, outputPath);
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.green(`✓ Exported to: ${outputPath}`);
+        terminal.moveTo(3, 4);
+        terminal.write(pc.green(`✓ Exported to: ${outputPath}`));
     } catch (e: any) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.red(`✗ Export failed: ${e.message}`);
+        terminal.moveTo(3, 4);
+        terminal.write(pc.red(`✗ Export failed: ${e.message}`));
     }
 
-    term.moveTo(3, 6);
-    term.dim('Press any key...');
+    terminal.moveTo(3, 6);
+    terminal.write(pc.dim('Press any key...'));
     await waitForKey();
 }
 
@@ -245,20 +217,15 @@ async function showExportBackup(): Promise<void> {
  * Import a backup from a tar.gz archive.
  */
 async function showImportBackup(): Promise<void> {
-    const term = getTerm();
     refreshChrome();
     clearContent();
 
-    term.moveTo(3, 4);
-    term.bold.cyan('Import Backup');
-    term.moveTo(3, 6);
-    term('Enter path to .tar.gz archive: ');
+    terminal.moveTo(3, 4);
+    terminal.write(pc.bold(pc.cyan('Import Backup')));
+    terminal.moveTo(3, 6);
+    terminal.write('Enter path to .tar.gz archive: ');
 
-    const archivePath = await new Promise<string>((resolve) => {
-        term.inputField({ cancelable: true }, (error: any, input: any) => {
-            resolve(input ?? '');
-        });
-    });
+    const archivePath = await terminal.inputField({ cancelable: true });
 
     if (!archivePath) return;
 
@@ -266,17 +233,17 @@ async function showImportBackup(): Promise<void> {
         const record = importBackup(archivePath.trim());
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.green(`✓ Imported backup: ${record.id} (${record.files.length} files)`);
+        terminal.moveTo(3, 4);
+        terminal.write(pc.green(`✓ Imported backup: ${record.id} (${record.files.length} files)`));
     } catch (e: any) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.red(`✗ Import failed: ${e.message}`);
+        terminal.moveTo(3, 4);
+        terminal.write(pc.red(`✗ Import failed: ${e.message}`));
     }
 
-    term.moveTo(3, 6);
-    term.dim('Press any key...');
+    terminal.moveTo(3, 6);
+    terminal.write(pc.dim('Press any key...'));
     await waitForKey();
 }
 
@@ -284,16 +251,15 @@ async function showImportBackup(): Promise<void> {
  * Rollback to a selected backup snapshot.
  */
 async function showRollback(profile: SystemProfile): Promise<void> {
-    const term = getTerm();
     const backups = listBackups();
 
     if (backups.length === 0) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.dim('No backups available for rollback.');
-        term.moveTo(3, 6);
-        term.dim('Press any key...');
+        terminal.moveTo(3, 4);
+        terminal.write(pc.dim('No backups available for rollback.'));
+        terminal.moveTo(3, 6);
+        terminal.write(pc.dim('Press any key...'));
         await waitForKey();
         return;
     }
@@ -302,27 +268,20 @@ async function showRollback(profile: SystemProfile): Promise<void> {
     clearContent();
 
     let row = 4;
-    term.moveTo(3, row++);
-    term.bold.cyan('Rollback to Snapshot');
+    terminal.moveTo(3, row++);
+    terminal.write(pc.bold(pc.cyan('Rollback to Snapshot')));
     row++;
 
     const items = backups.map(b => `${b.date} (${b.files.length} files) — ${b.id}`);
     items.push('← Cancel');
 
-    const selected = await new Promise<number>((resolve) => {
-        term.singleColumnMenu(items, {
-            y: row,
-            selectedStyle: term.bold.bgYellow.black,
-            style: term.white,
-            cancelable: true,
-        }, (error: any, response: any) => {
-            if (error || !response || response.canceled) {
-                resolve(items.length - 1);
-                return;
-            }
-            resolve(response.selectedIndex);
-        });
+    const response = await terminal.singleColumnMenu(items, {
+        y: row,
+        selectedBg: 'yellow',
+        cancelable: true,
     });
+
+    const selected = response.canceled ? items.length - 1 : response.selectedIndex;
 
     if (selected >= backups.length) return;
 
@@ -330,15 +289,15 @@ async function showRollback(profile: SystemProfile): Promise<void> {
 
     refreshChrome();
     clearContent();
-    term.moveTo(3, 4);
-    term.yellow.bold(`Restore backup ${backup.id}? This overwrites current configs. [y/N] `);
+    terminal.moveTo(3, 4);
+    terminal.write(pc.bold(pc.yellow(`Restore backup ${backup.id}? This overwrites current configs. [y/N] `)));
 
     const confirmed = await new Promise<boolean>((resolve) => {
         const handler = (key: string) => {
-            term.removeListener('key', handler);
+            terminal.removeKeyListener(handler);
             resolve(key === 'y' || key === 'Y');
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
     });
 
     if (!confirmed) return;
@@ -349,49 +308,49 @@ async function showRollback(profile: SystemProfile): Promise<void> {
         clearContent();
 
         let row = 4;
-        term.moveTo(3, row++);
-        term.green(`✓ Restored ${restored.length} file(s):`);
+        terminal.moveTo(3, row++);
+        terminal.write(pc.green(`✓ Restored ${restored.length} file(s):`));
         for (const file of restored) {
-            term.moveTo(3, row++);
-            term.green(`  ✓ ${file}`);
+            terminal.moveTo(3, row++);
+            terminal.write(pc.green(`  ✓ ${file}`));
         }
 
         if (profile.initramfs !== 'Unknown') {
             row++;
-            term.moveTo(3, row++);
-            term(`Rebuild initramfs using ${profile.initramfs}? [y/N] `);
+            terminal.moveTo(3, row++);
+            terminal.write(`Rebuild initramfs using ${profile.initramfs}? [y/N] `);
 
             const shouldRebuild = await new Promise<boolean>((resolve) => {
                 const handler = (key: string) => {
-                    term.removeListener('key', handler);
+                    terminal.removeKeyListener(handler);
                     resolve(key === 'y' || key === 'Y');
                 };
-                term.on('key', handler);
+                terminal.onKey(handler);
             });
 
             if (shouldRebuild) {
                 try {
                     rebuildInitramfs(profile);
-                    term.moveTo(3, row++);
-                    term.green('✓ Initramfs rebuilt.');
+                    terminal.moveTo(3, row++);
+                    terminal.write(pc.green('✓ Initramfs rebuilt.'));
                 } catch (e: any) {
-                    term.moveTo(3, row++);
-                    term.red(`✗ Rebuild failed: ${e.message}`);
+                    terminal.moveTo(3, row++);
+                    terminal.write(pc.red(`✗ Rebuild failed: ${e.message}`));
                 }
             }
         }
 
-        term.moveTo(3, row + 1);
-        term.green.bold('Rollback complete!');
+        terminal.moveTo(3, row + 1);
+        terminal.write(pc.bold(pc.green('Rollback complete!')));
     } catch (e: any) {
         refreshChrome();
         clearContent();
-        term.moveTo(3, 4);
-        term.red(`✗ Rollback failed: ${e.message}`);
+        terminal.moveTo(3, 4);
+        terminal.write(pc.red(`✗ Rollback failed: ${e.message}`));
     }
 
-    term.moveTo(3, term.height - 2);
-    term.dim('Press any key...');
+    terminal.moveTo(3, terminal.height - 2);
+    terminal.write(pc.dim('Press any key...'));
     await waitForKey();
 }
 
@@ -399,12 +358,11 @@ async function showRollback(profile: SystemProfile): Promise<void> {
  * Waits for any single keypress.
  */
 function waitForKey(): Promise<void> {
-    const term = getTerm();
     return new Promise<void>((resolve) => {
         const handler = () => {
-            term.removeListener('key', handler);
+            terminal.removeKeyListener(handler);
             resolve();
         };
-        term.on('key', handler);
+        terminal.onKey(handler);
     });
 }
