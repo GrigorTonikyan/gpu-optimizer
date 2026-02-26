@@ -96,7 +96,7 @@ interface InputFieldOptions {
  * @param data - Raw buffer from stdin
  * @returns Array of parsed key names (may contain multiple keys if input was buffered)
  */
-function parseKeys(data: Buffer): KeyName[] {
+export function parseKeys(data: Buffer): KeyName[] {
     const keys: KeyName[] = [];
     let i = 0;
 
@@ -166,7 +166,7 @@ function parseKeys(data: Buffer): KeyName[] {
  * terminal.fullscreen(false);
  * ```
  */
-class Terminal {
+export class Terminal {
     private keyHandlers: Set<KeyHandler> = new Set();
     private stdinListener: ((data: Buffer) => void) | null = null;
     private rawModeActive = false;
@@ -242,7 +242,7 @@ class Terminal {
 
     /**
      * Enables or disables raw input mode on stdin.
-     * When raw mode is active, stdin delivers individual keypresses
+     * When raw mode is active, stdin delivers individual keypress
      * instead of line-buffered input.
      *
      * @param on - true to enable raw mode, false to disable
