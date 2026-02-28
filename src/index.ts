@@ -22,17 +22,21 @@ import { loadConfig, saveConfig } from './config';
  */
 async function main(): Promise<void> {
     const args = Bun.argv.slice(2);
+    const { Logger } = await import('./utils/logger');
 
     // Global flag parsing
     if (args.includes('--dry-run')) {
-        const config = loadConfig();
+        const config = await loadConfig();
         config.dryMode = true;
-        saveConfig(config);
+        await saveConfig(config);
         console.log(pc.yellow('⚠ Dry mode enabled for this session. No files will be modified.'));
         // We remove the flag so it doesn't interfere with command parsing
         const idx = args.indexOf('--dry-run');
         args.splice(idx, 1);
     }
+
+    const config = await loadConfig();
+    await Logger.init(config);
 
     const flag = args[0] ?? '';
 
@@ -67,7 +71,7 @@ async function main(): Promise<void> {
 
     if (flag === '--list-backups') {
         const { cliListBackups } = await import('./cli');
-        cliListBackups();
+        await cliListBackups();
         return;
     }
 
@@ -78,7 +82,7 @@ async function main(): Promise<void> {
             console.error(pc.red('Error: Missing key=value argument for --config'));
             return;
         }
-        cliConfig(kv);
+        await cliConfig(kv);
         return;
     }
 
@@ -109,7 +113,7 @@ function printHelp(): void {
     console.log('');
 }
 
-main().catch(e => {
-    console.error(pc.red('Fatal error:'), e);
-    process.exit(1);
+main().catch(async (e) => {
+    const { Logger } = await import('./utils/logger');
+    Logger.fatal('Fatal error during startup', e);
 });

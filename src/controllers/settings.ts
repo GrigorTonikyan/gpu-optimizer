@@ -2,24 +2,26 @@ import type { AppConfig } from '../types';
 import { loadConfig, saveConfig, resetConfig, getDefaultConfig } from '../config';
 
 /**
- * Loads the current application configuration.
- * Returns defaults if no config file exists or if validation fails.
+ * Loads the current application settings.
+ * Pulls from the configuration file and returns a validated AppConfig object.
+ * 
+ * @returns A promise resolving to the current AppConfig
  */
-export function getSettings(): AppConfig {
-    return loadConfig();
+export async function getSettings(): Promise<AppConfig> {
+    return await loadConfig();
 }
 
 /**
- * Updates the application configuration with the provided partial values.
- * Merges the update with the current config and persists the result.
- *
- * @param update - Partial AppConfig with the fields to update
- * @returns The merged and persisted configuration
+ * Updates application settings with partial changes.
+ * Merges the provided changes with the current configuration and persists them.
+ * 
+ * @param changes - Partial AppConfig object containing updates
+ * @returns A promise resolving to the fully updated AppConfig
  */
-export function updateSettings(update: Partial<AppConfig>): AppConfig {
-    const current = loadConfig();
-    const merged: AppConfig = { ...current, ...update };
-    saveConfig(merged);
+export async function updateSettings(changes: Partial<AppConfig>): Promise<AppConfig> {
+    const current = await loadConfig();
+    const merged: AppConfig = { ...current, ...changes };
+    await saveConfig(merged);
     return merged;
 }
 
@@ -28,13 +30,15 @@ export function updateSettings(update: Partial<AppConfig>): AppConfig {
  *
  * @returns The default configuration after reset
  */
-export function resetSettings(): AppConfig {
-    return resetConfig();
+export async function resetSettings(): Promise<AppConfig> {
+    return await resetConfig();
 }
 
 /**
- * Returns the default configuration without persisting it.
- * Useful for displaying defaults in settings UI.
+ * Returns the default application settings.
+ * Useful for initializing new installations or comparison.
+ * 
+ * @returns The default AppConfig object
  */
 export function getDefaults(): AppConfig {
     return getDefaultConfig();

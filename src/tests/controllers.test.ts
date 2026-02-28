@@ -94,30 +94,30 @@ describe('Controllers — Settings', () => {
 
     it('getSettings returns defaults on fresh install', async () => {
         const { getSettings } = await import('../controllers/settings');
-        const settings = getSettings();
-        expect(settings.verbosity).toBe(1);
+        const settings = await getSettings();
+        expect(settings.verbosity).toBe('info');
         expect(settings.dryMode).toBe(false);
     });
 
     it('updateSettings persists partial changes', async () => {
         const { updateSettings, getSettings } = await import('../controllers/settings');
 
-        updateSettings({ dryMode: true, verbosity: 2 });
-        const settings = getSettings();
+        await updateSettings({ dryMode: true, verbosity: 'debug' });
+        const settings = await getSettings();
 
         expect(settings.dryMode).toBe(true);
-        expect(settings.verbosity).toBe(2);
+        expect(settings.verbosity).toBe('debug');
         expect(settings.loggingEnabled).toBe(false);
     });
 
     it('resetSettings restores defaults', async () => {
         const { updateSettings, resetSettings } = await import('../controllers/settings');
 
-        updateSettings({ dryMode: true });
-        const reset = resetSettings();
+        await updateSettings({ dryMode: true });
+        const reset = await resetSettings();
 
         expect(reset.dryMode).toBe(false);
-        expect(reset.verbosity).toBe(1);
+        expect(reset.verbosity).toBe('info');
     });
 });
 
@@ -139,13 +139,13 @@ describe('Controllers — Backup', () => {
 
     it('listBackups returns empty array when no backups exist', async () => {
         const { listBackups } = await import('../controllers/backup');
-        const list = listBackups();
+        const list = await listBackups();
         expect(list).toEqual([]);
     });
 
     it('deleteBackup throws for non-existent snapshot', async () => {
         const { deleteBackup } = await import('../controllers/backup');
-        expect(() => deleteBackup('non-existent-id')).toThrow('Snapshot not found');
+        await expect(deleteBackup('non-existent-id')).rejects.toThrow('Snapshot not found');
     });
 });
 

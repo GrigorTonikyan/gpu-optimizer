@@ -70,20 +70,35 @@ export interface SystemProfile {
     };
 }
 
+/** Standardized log levels for the application */
+export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
+
 /**
  * Persistent application configuration stored at
  * `$XDG_CONFIG_HOME/gpu-optimizer/config.json`.
  * Validated with zod on load to prevent corrupt state.
  */
 export interface AppConfig {
-    /** Verbosity level: 0 = quiet, 1 = normal, 2 = verbose */
-    verbosity: 0 | 1 | 2;
+    /** Verbosity level: default debug (dev), info (prod) */
+    verbosity: LogLevel;
     /** Enable logging to files */
     loggingEnabled: boolean;
-    /** Custom log directory (XDG_STATE_HOME/gpu-optimizer/logs by default) */
-    logDirectory: string;
-    /** Custom backup directory (XDG_STATE_HOME/gpu-optimizer/backups by default) */
-    backupDirectory: string;
+    /** Custom path overrides (absolute paths allowed) */
+    paths: {
+        /** default: XDG_CONFIG_HOME/gpu-optimizer/config.json */
+        config?: string;
+        /** default: XDG_DATA_HOME/gpu-optimizer/ */
+        data?: string;
+        /** default: XDG_STATE_HOME/gpu-optimizer/logs/ */
+        logs?: string;
+    };
+    /** Backup storage configuration */
+    backupPaths: {
+        /** The directory where NEW backups are saved by default */
+        primary: string;
+        /** Additional directories scanned for existing backups (read-only) */
+        sources: string[];
+    };
     /** Dry mode: simulate all mutations without writing */
     dryMode: boolean;
 }

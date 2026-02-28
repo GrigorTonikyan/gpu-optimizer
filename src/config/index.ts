@@ -1,112 +1,114 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, dirname } from 'node:path';
 import { z } from 'zod';
-import type { AppConfig } from '../types';
+import { join } from 'node:path';
+import type { AppConfig, LogLevel } from '../types';
+import { FsService } from '../services/fs';
 
 /**
  * Zod schema for validating the persisted application configuration.
- * Ensures corrupt or hand-edited JSON files are caught on load rather
- * than surfacing as runtime type errors deep in the application.
  */
 const AppConfigSchema = z.object({
-    verbosity: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    verbosity: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']),
     loggingEnabled: z.boolean(),
-    logDirectory: z.string(),
-    backupDirectory: z.string(),
+    paths: z.object({
+        config: z.string().optional(),
+        data: z.string().optional(),
+        logs: z.string().optional(),
+    }),
+    backupPaths: z.object({
+        primary: z.string(),
+        sources: z.array(z.string()),
+    }),
     dryMode: z.boolean(),
 });
 
 /**
- * Resolves an XDG base directory path, respecting the environment variable
- * override and falling back to the specification default.
- *
- * @param envVar - The XDG environment variable name (e.g. `XDG_CONFIG_HOME`)
- * @param fallback - The fallback relative to `$HOME` (e.g. `.config`)
- * @param segments - Additional path segments appended after the app subdirectory
- * @returns The fully resolved absolute path
+ * Returns the resolved path to the config file (with override support).
  */
-export function resolveXdgPath(envVar: string, fallback: string, ...segments: string[]): string {
-    const base = Bun.env[envVar] || join(homedir(), fallback);
-    return join(base, 'gpu-optimizer', ...segments);
+export async function getConfigPath(): Promise<string> {
+    // We check for self-override (meta-config) if we ever implement one, 
+    // but for now we follow the standard XDG path.
+    return FsService.resolveXdgPath('XDG_CONFIG_HOME', '.config', 'config.json');
 }
 
 /**
- * Returns the resolved path to the XDG-compliant config file.
+ * Returns the resolved path to the log file.
  */
-export function getConfigPath(): string {
-    return resolveXdgPath('XDG_CONFIG_HOME', '.config', 'config.json');
+export async function getLogPath(config?: AppConfig): Promise<string> {
+    const logDir = config?.paths.logs || FsService.resolveXdgPath('XDG_STATE_HOME', '.local/state', 'logs');
+    return join(logDir, 'gpu-optimizer.log');
 }
 
 /**
- * Returns the resolved path to the XDG-compliant log directory.
+ * Returns the primary resolved path to the backup directory.
  */
-export function getLogDirectory(): string {
-    return resolveXdgPath('XDG_STATE_HOME', '.local/state', 'logs');
+export function getBackupDirectory(config?: AppConfig): string {
+    return config?.backupPaths.primary || FsService.resolveXdgPath('XDG_STATE_HOME', '.local/state', 'backups');
 }
 
 /**
- * Returns the resolved path to the XDG-compliant backup directory.
- */
-export function getBackupDirectory(): string {
-    return resolveXdgPath('XDG_STATE_HOME', '.local/state', 'backups');
-}
-
-/**
- * Constructs the default configuration using XDG-resolved paths.
- * This is used as the initial config when no file exists yet,
- * and as a fallback when the persisted config fails validation.
+ * Constructs the default configuration.
  */
 export function getDefaultConfig(): AppConfig {
     return {
-        verbosity: 1,
+        verbosity: 'info',
         loggingEnabled: false,
-        logDirectory: getLogDirectory(),
-        backupDirectory: getBackupDirectory(),
+        paths: {},
+        backupPaths: {
+            primary: FsService.resolveXdgPath('XDG_STATE_HOME', '.local/state', 'backups'),
+            sources: [],
+        },
         dryMode: false,
     };
 }
 
 /**
- * Loads the application config from `$XDG_CONFIG_HOME/gpu-optimizer/config.json`.
- * If the file does not exist or fails validation, returns the default config.
+ * Loads the application config.
  */
-export function loadConfig(): AppConfig {
-    const configPath = getConfigPath();
+export async function loadConfig(): Promise<AppConfig> {
+    const configPath = await getConfigPath();
+    const data = await FsService.readJson<any>(configPath);
 
-    if (!existsSync(configPath)) {
+    if (!data) {
         return getDefaultConfig();
     }
 
     try {
-        const raw = readFileSync(configPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        return AppConfigSchema.parse(parsed);
-    } catch {
+        // Handle legacy numeric verbosity migration if needed
+        if (typeof data.verbosity === 'number') {
+            const levels: LogLevel[] = ['error', 'info', 'debug'];
+            data.verbosity = levels[data.verbosity] || 'info';
+        }
+
+        // Handle path migration from v0.3.0 schema
+        if (data.logDirectory && !data.paths) {
+            data.paths = { logs: data.logDirectory };
+            delete data.logDirectory;
+        }
+        if (data.backupDirectory && !data.backupPaths) {
+            data.backupPaths = { primary: data.backupDirectory, sources: [] };
+            delete data.backupDirectory;
+        }
+
+        return AppConfigSchema.parse(data);
+    } catch (e) {
+        console.warn('Config validation failed, using defaults:', e);
         return getDefaultConfig();
     }
 }
 
 /**
- * Persists the given configuration to `$XDG_CONFIG_HOME/gpu-optimizer/config.json`.
- * Creates the parent directory tree if it does not already exist.
- *
- * @param config - The validated AppConfig to persist
+ * Persists the given configuration.
  */
-export function saveConfig(config: AppConfig): void {
-    const configPath = getConfigPath();
-    const dir = dirname(configPath);
-
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+export async function saveConfig(config: AppConfig): Promise<void> {
+    const configPath = await getConfigPath();
+    await FsService.writeJson(configPath, config);
 }
 
 /**
- * Resets the configuration to defaults by overwriting the config file.
- * @returns The freshly written default config
+ * Resets the configuration to defaults.
  */
-export function resetConfig(): AppConfig {
+export async function resetConfig(): Promise<AppConfig> {
     const defaults = getDefaultConfig();
-    saveConfig(defaults);
+    await saveConfig(defaults);
     return defaults;
 }

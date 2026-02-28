@@ -14,6 +14,7 @@ import {
     getAvailableServices,
     applyNvidiaPersistence,
     applyUdevPowerRule,
+    deleteBackup,
 } from '../controllers';
 import { loadConfig, saveConfig } from '../config';
 import type { SystemProfile } from '../types';
@@ -74,8 +75,8 @@ function printStatus(profile: SystemProfile): void {
 }
 
 /**
- * CLI passthrough: --status
- * Prints the current system status and exits.
+ * CLI flow: --status
+ * Prints a high-level summary of the system hardware and state.
  */
 export async function cliStatus(): Promise<void> {
     const profile = await getStatusSnapshot();
@@ -83,9 +84,9 @@ export async function cliStatus(): Promise<void> {
 }
 
 /**
- * CLI passthrough: --apply
- * Runs the full apply flow non-interactively, applying all recommended
- * optimizations automatically. Optional rules are skipped.
+ * CLI flow: --apply
+ * Interactive optimization flow. Discovers hardware, analyzes risks,
+ * and stages/applies kernel and module-level optimizations.
  */
 export async function cliApply(): Promise<void> {
     p.intro(pc.bold(pc.cyan(' Universal GPU Optimizer — Apply ')));
@@ -226,36 +227,36 @@ export async function cliApply(): Promise<void> {
 }
 
 /**
- * CLI passthrough: --rollback
+ * CLI flow: --rollback
  * Lists available snapshots and allows selecting one to restore.
+ * Performs a deep rollback of all staged file mutations.
  */
 export async function cliRollback(): Promise<void> {
     p.intro(pc.bold(pc.cyan(' Universal GPU Optimizer — Rollback ')));
 
-    const profile = await getStatusSnapshot();
-    const snapshots = listBackups();
+    const backups = await listBackups();
 
-    if (snapshots.length === 0) {
+    if (backups.length === 0) {
         p.log.info('No backup snapshots found.');
         return;
     }
 
-    const selected = await p.select({
+    const snapshotId = await p.select({
         message: 'Select a backup to restore:',
-        options: snapshots.map(s => ({
+        options: backups.map(s => ({
             value: s.id,
             label: `${s.date} (${s.files.length} file${s.files.length !== 1 ? 's' : ''})`,
             hint: s.id,
         })),
     });
 
-    if (isCancel(selected)) {
+    if (isCancel(snapshotId)) {
         p.log.warning('Rollback cancelled.');
         return;
     }
 
     const shouldRollback = await p.confirm({
-        message: `Restore backup ${selected}? This will overwrite current configs.`,
+        message: `Restore backup ${snapshotId}? This will overwrite current configs.`,
     });
 
     if (isCancel(shouldRollback) || !shouldRollback) {
@@ -266,7 +267,7 @@ export async function cliRollback(): Promise<void> {
     const spin = p.spinner();
     spin.start('Restoring files...');
     try {
-        const restored = rollbackToSnapshot(selected as string);
+        const restored = await rollbackToSnapshot(snapshotId as string);
         spin.stop(`Restored ${restored.length} file(s).`);
         for (const file of restored) {
             console.log(`  ${pc.green('✓')} ${file}`);
@@ -276,7 +277,9 @@ export async function cliRollback(): Promise<void> {
         p.log.error(e.message);
         return;
     }
+    const profile = await getStatusSnapshot();
 
+    // Restore initramfs rebuild prompt if applicable
     if (profile.initramfs !== 'Unknown') {
         const shouldRebuild = await p.confirm({
             message: `Rebuild initramfs using ${profile.initramfs}?`,
@@ -284,7 +287,7 @@ export async function cliRollback(): Promise<void> {
 
         if (!isCancel(shouldRebuild) && shouldRebuild) {
             try {
-                rebuildInitramfs(profile);
+                await rebuildInitramfs(profile);
             } catch (e: any) {
                 p.log.error(`Rebuild failed: ${e.message}`);
             }
@@ -295,8 +298,9 @@ export async function cliRollback(): Promise<void> {
 }
 
 /**
- * CLI passthrough: --detailed
- * Prints an exhaustive system profile.
+ * CLI flow: --detailed
+ * Prints an exhaustive system profile for advanced debugging.
+ * Includes full hardware stats, PCI IDs, and driver details.
  */
 export async function cliDetailedStatus(): Promise<void> {
     const profile = await getStatusSnapshot();
@@ -305,7 +309,6 @@ export async function cliDetailedStatus(): Promise<void> {
     console.log(pc.bold(pc.cyan('  ━━━ Detailed System Profile ━━━')));
     console.log('');
 
-    // OS & Immutable State
     console.log(pc.bold('  OS Architecture'));
     console.log(`    Kernel Version:   ${pc.white(profile.kernelVersion)}`);
     console.log(`    Display Server:   ${pc.white(profile.displayServer)}`);
@@ -359,24 +362,21 @@ export async function cliDetailedStatus(): Promise<void> {
 }
 
 /**
- * CLI passthrough: --list-backups
- * Prints all available backups.
+ * CLI flow: --list-backups
+ * Prints all available backups with timestamps and metadata.
  */
-export function cliListBackups(): void {
-    const snapshots = listBackups();
+export async function cliListBackups(): Promise<void> {
+    const backups = await listBackups();
     console.log('');
     console.log(pc.bold(pc.cyan('  ━━━ Backup Snapshots ━━━')));
     console.log('');
 
-    if (snapshots.length === 0) {
+    if (backups.length === 0) {
         console.log(pc.dim('  No backups found.'));
     } else {
-        for (const s of snapshots) {
+        for (const s of backups) {
             console.log(`  ${pc.bold(pc.green(s.id))} │ ${pc.white(s.date)}`);
             console.log(pc.dim(`    Contains ${s.files.length} file(s)`));
-            for (const f of s.files) {
-                console.log(pc.dim(`     - ${f.originalPath}`));
-            }
             console.log('');
         }
     }
@@ -385,11 +385,13 @@ export function cliListBackups(): void {
 }
 
 /**
- * CLI passthrough: --config key=value
- * Updates a configuration key.
+ * CLI flow: --config key=value
+ * Updates a configuration key and persists it to disk.
+ *
+ * @param keyValueString - The raw string input from the CLI (e.g., "dryMode=true")
  */
-export function cliConfig(keyValueString: string): void {
-    const config = loadConfig();
+export async function cliConfig(keyValueString: string): Promise<void> {
+    const config = await loadConfig();
     const [key, rawValue] = keyValueString.split('=');
 
     if (!key || rawValue === undefined) {
@@ -406,8 +408,7 @@ export function cliConfig(keyValueString: string): void {
     }
 
     try {
-        // Simple type coercion based on current value type
-        const typeofVal = typeof config[keyStr];
+        const typeofVal = typeof (config as any)[keyStr];
         let newVal: any = valueStr;
 
         if (typeofVal === 'number') {
@@ -417,9 +418,8 @@ export function cliConfig(keyValueString: string): void {
             newVal = valueStr === 'true' || valueStr === '1';
         }
 
-        // Apply and save
         (config as any)[keyStr] = newVal;
-        saveConfig(config);
+        await saveConfig(config);
 
         console.log(pc.green(`✓ Configuration updated: ${keyStr} = ${newVal}`));
     } catch (e: any) {

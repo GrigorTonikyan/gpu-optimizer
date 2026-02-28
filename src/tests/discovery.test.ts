@@ -16,12 +16,11 @@ describe('Shell Utilities', () => {
         const { stageFile } = await import('../utils/shell');
         const { readFileSync, unlinkSync } = await import('node:fs');
 
-        const filePath = stageFile('test-content', 'unit-test-');
+        const filePath = await stageFile('test-content', 'unit-test-');
         expect(filePath).toContain('gpu-optimizer-staging');
         expect(filePath).toContain('unit-test-');
 
-        const content = readFileSync(filePath, 'utf-8');
-        expect(content).toBe('test-content');
+        expect(readFileSync(filePath, 'utf-8')).toBe('test-content');
 
         unlinkSync(filePath);
     });

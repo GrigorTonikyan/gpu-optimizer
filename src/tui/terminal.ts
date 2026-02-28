@@ -86,6 +86,8 @@ interface InputFieldOptions {
     default?: string;
     /** Whether pressing Escape cancels the input */
     cancelable?: boolean;
+    /** Optional hook for providing autocomplete suggestions */
+    onAutocomplete?: (current: string) => Promise<string[] | string>;
 }
 
 /**
@@ -405,13 +407,13 @@ export class Terminal {
     inputField(options: InputFieldOptions = {}): Promise<string> {
         let value = options.default ?? '';
         const cancelable = options.cancelable ?? false;
-        const startCol = this.getCursorApproxCol();
+        let autocompleteIndex = -1;
 
         this.hideCursor(false);
         this.write(value);
 
         return new Promise<string>((resolve) => {
-            const handler = (key: KeyName) => {
+            const handler = async (key: KeyName) => {
                 if (key === 'ENTER') {
                     this.removeKeyListener(handler);
                     this.hideCursor(true);
@@ -425,6 +427,31 @@ export class Terminal {
                     resolve('');
                     return;
                 }
+                if (key === 'TAB' && options.onAutocomplete) {
+                    const result = await options.onAutocomplete(value);
+                    if (typeof result === 'string') {
+                        // Direct replacement
+                        const diff = result.slice(value.length);
+                        value = result;
+                        this.write(diff);
+                    } else if (Array.isArray(result) && result.length > 0) {
+                        // Cycling through results (simple implementation for now)
+                        autocompleteIndex = (autocompleteIndex + 1) % result.length;
+                        const suggestion = result[autocompleteIndex];
+
+                        if (suggestion !== undefined) {
+                            // Clear current line from cursor
+                            for (let i = 0; i < value.length; i++) this.write('\b \b');
+                            value = suggestion;
+                            this.write(value);
+                        }
+                    }
+                    return;
+                }
+
+                // Any other key resets autocomplete
+                autocompleteIndex = -1;
+
                 if (key === 'BACKSPACE') {
                     if (value.length > 0) {
                         value = value.slice(0, -1);
