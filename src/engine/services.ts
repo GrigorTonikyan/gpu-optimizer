@@ -52,7 +52,7 @@ function generateUdevRuleContent(): string {
  *
  * @returns A StagedMutation with the staged rule file and diff
  */
-export function stageUdevPowerRule(): StagedMutation {
+export async function stageUdevPowerRule(): Promise<StagedMutation> {
     const newContent = generateUdevRuleContent();
 
     let originalContent = '';
@@ -66,7 +66,7 @@ export function stageUdevPowerRule(): StagedMutation {
         }
     }
 
-    const stagedPath = stageFile(newContent, 'udev-gpu-pm-');
+    const stagedPath = await stageFile(newContent, 'udev-gpu-pm-');
     const diff = generateDiff(originalContent, newContent);
 
     return {

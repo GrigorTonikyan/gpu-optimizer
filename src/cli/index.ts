@@ -114,7 +114,8 @@ export async function cliApply(): Promise<void> {
 
     for (const rule of [...analysis.recommended, ...analysis.optional]) {
         const severity = rule.severity === 'recommended' ? pc.green('recommended') : pc.dim('optional');
-        console.log(`  ${pc.cyan('●')} [${severity}] ${rule.description}`);
+        const status = rule.isApplied ? pc.dim(' [applied]') : '';
+        console.log(`  ${pc.cyan('●')} [${severity}] ${rule.isApplied ? pc.dim(rule.description) : rule.description}${status}`);
         console.log(`    ${pc.dim(rule.value)}`);
     }
     console.log('');
@@ -123,7 +124,7 @@ export async function cliApply(): Promise<void> {
     if (analysis.optional.length > 0) {
         const optResult = await p.multiselect({
             message: 'Select optional optimizations to include:',
-            options: analysis.optional.map(r => ({
+            options: analysis.optional.filter(r => !r.isApplied).map(r => ({
                 value: r.id,
                 label: r.description,
                 hint: r.value,
@@ -139,7 +140,7 @@ export async function cliApply(): Promise<void> {
     }
 
     const selectedRules = [
-        ...analysis.recommended,
+        ...analysis.recommended.filter(r => !r.isApplied),
         ...analysis.optional.filter(r => selectedOptional.includes(r.id)),
     ];
 
@@ -148,7 +149,7 @@ export async function cliApply(): Promise<void> {
         return;
     }
 
-    const { mutations, warnings } = stageOptimizations(profile, selectedRules);
+    const { mutations, warnings } = await stageOptimizations(profile, selectedRules);
 
     for (const w of warnings) {
         p.log.warning(w);
@@ -182,7 +183,7 @@ export async function cliApply(): Promise<void> {
     }
 
     spin.start('Applying changes...');
-    const result = applyMutations(mutations);
+    const result = await applyMutations(mutations);
 
     if (!result.success) {
         spin.stop(pc.red('Failed to apply changes.'));

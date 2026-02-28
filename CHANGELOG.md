@@ -7,6 +7,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 
 ## [Unreleased]
 
+### Added
+- **Optimization Status Verification**: Implemented system-wide detection of already-applied kernel parameters and modprobe options.
+    - Added `isApplied` status to `OptimizationRule` type.
+    - Integrated `/proc/cmdline` and `/etc/modprobe.d/gpu-optimizer.conf` probing into the discovery controller.
+    - Updated TUI and CLI to mark applied rules as `[DONE]` and exclude them from default selection.
+
 ### Fixed
 - **Documentation**: Removed non-English (Russian) JSDocs from `src/utils/logger.ts` and replaced them with English equivalents.
 - **Unit Tests**: Fixed TypeScript "possibly undefined" errors in `src/tests/backup.test.ts`.

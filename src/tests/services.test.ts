@@ -69,8 +69,8 @@ describe('Services — getAvailableServices', () => {
 });
 
 describe('Services — stageUdevPowerRule', () => {
-    it('stages a valid udev rule file', () => {
-        const result = stageUdevPowerRule();
+    it('stages a valid udev rule file', async () => {
+        const result = await stageUdevPowerRule();
 
         expect(result.targetPath).toBe('/etc/udev/rules.d/80-gpu-pm.rules');
         expect(result.stagedPath).toBeTruthy();

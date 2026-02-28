@@ -1,7 +1,10 @@
 import type { SystemProfile, OptimizationRule, OptimizationPlan, StagedMutation } from '../types';
 import { generateOptimizationPlan } from '../engine/matrix';
+import { enrichRuleStatus } from '../engine/status';
 import { injectGrub, injectSystemdBoot, writeModprobeConfig, applyStaged, triggerRebuild } from '../engine/mutate';
 import { createSnapshot } from '../engine/backup';
+import { getBackupDirectory, loadConfig } from '../config';
+import { Logger } from '../utils/logger';
 
 /**
  * Result returned by the optimization analysis phase.
@@ -54,6 +57,7 @@ export function checkImmutability(profile: SystemProfile): string | null {
  */
 export function analyzeOptimizations(profile: SystemProfile): OptimizationAnalysis {
     const plan = generateOptimizationPlan(profile);
+    enrichRuleStatus(plan);
     const allRules = [...plan.kernelParams, ...plan.modprobeOptions];
     const recommended = allRules.filter(r => r.severity === 'recommended');
     const optional = allRules.filter(r => r.severity === 'optional');
@@ -75,10 +79,10 @@ export function analyzeOptimizations(profile: SystemProfile): OptimizationAnalys
  * @returns Array of staged mutations ready for review
  * @throws If staging fails for bootloader or modprobe configs
  */
-export function stageOptimizations(
+export async function stageOptimizations(
     profile: SystemProfile,
     selectedRules: OptimizationRule[]
-): { mutations: StagedMutation[]; warnings: string[] } {
+): Promise<{ mutations: StagedMutation[]; warnings: string[] }> {
     const mutations: StagedMutation[] = [];
     const warnings: string[] = [];
 
@@ -87,12 +91,12 @@ export function stageOptimizations(
 
     if (kernelParams.length > 0) {
         if (profile.bootloader.type === 'GRUB') {
-            mutations.push(injectGrub(kernelParams, profile.bootloader.configPath));
+            mutations.push(await injectGrub(kernelParams, profile.bootloader.configPath));
         } else if (profile.bootloader.type === 'systemd-boot') {
             if (!profile.bootloader.configPath) {
                 warnings.push('systemd-boot detected but entry config path not readable. Kernel param injection requires elevated read access.');
             } else {
-                mutations.push(injectSystemdBoot(kernelParams, profile.bootloader.configPath));
+                mutations.push(await injectSystemdBoot(kernelParams, profile.bootloader.configPath));
             }
         } else {
             warnings.push('Unknown bootloader — cannot inject kernel parameters automatically.');
@@ -100,7 +104,7 @@ export function stageOptimizations(
     }
 
     if (modprobeRules.length > 0) {
-        mutations.push(writeModprobeConfig(modprobeRules));
+        mutations.push(await writeModprobeConfig(modprobeRules));
     }
 
     return { mutations, warnings };
@@ -113,10 +117,21 @@ export function stageOptimizations(
  * @param mutations - The staged mutations to apply
  * @returns The apply result including backup ID
  */
-export function applyMutations(mutations: StagedMutation[]): ApplyResult {
+export async function applyMutations(mutations: StagedMutation[]): Promise<ApplyResult> {
     try {
+        const config = await loadConfig();
+        const backupRoot = getBackupDirectory(config);
         const filesToBackup = mutations.map(m => m.targetPath);
-        const backup = createSnapshot(filesToBackup);
+        const backup = await createSnapshot(filesToBackup, backupRoot, config);
+
+        if (config.dryMode) {
+            Logger.info(`[DRY RUN] Simulation complete for ${mutations.length} mutations.`);
+            return {
+                success: true,
+                appliedMutations: mutations,
+                backupId: `${backup.id} (SIMULATED)`,
+            };
+        }
 
         for (const mut of mutations) {
             applyStaged(mut);

@@ -80,7 +80,7 @@ export function generateDiff(original: string, modified: string): string {
  * @returns A StagedMutation with the staged file path, target path, and diff
  * @throws If the config file cannot be read or the GRUB_CMDLINE_LINUX_DEFAULT line is not found
  */
-export function injectGrub(params: string[], configPath: string): StagedMutation {
+export async function injectGrub(params: string[], configPath: string): Promise<StagedMutation> {
     let content: string;
     try {
         content = readFileSync(configPath, 'utf-8');
@@ -109,7 +109,7 @@ export function injectGrub(params: string[], configPath: string): StagedMutation
     }
 
     const newContent = updatedLines.join('\n');
-    const stagedPath = stageFile(newContent, 'grub-');
+    const stagedPath = await stageFile(newContent, 'grub-');
     const diff = generateDiff(content, newContent);
 
     return { stagedPath, targetPath: configPath, diff };
@@ -127,7 +127,7 @@ export function injectGrub(params: string[], configPath: string): StagedMutation
  * @returns A StagedMutation with the staged file path, target path, and diff
  * @throws If the config file cannot be read or no `options` line is found
  */
-export function injectSystemdBoot(params: string[], configPath: string): StagedMutation {
+export async function injectSystemdBoot(params: string[], configPath: string): Promise<StagedMutation> {
     let content: string;
     try {
         content = readFileSync(configPath, 'utf-8');
@@ -155,7 +155,7 @@ export function injectSystemdBoot(params: string[], configPath: string): StagedM
     }
 
     const newContent = updatedLines.join('\n');
-    const stagedPath = stageFile(newContent, 'sdboot-');
+    const stagedPath = await stageFile(newContent, 'sdboot-');
     const diff = generateDiff(content, newContent);
 
     return { stagedPath, targetPath: configPath, diff };
@@ -170,7 +170,7 @@ export function injectSystemdBoot(params: string[], configPath: string): StagedM
  * @param rules - Array of OptimizationRules where target === 'modprobe'
  * @returns A StagedMutation with the staged file path, target path, and diff
  */
-export function writeModprobeConfig(rules: OptimizationRule[]): StagedMutation {
+export async function writeModprobeConfig(rules: OptimizationRule[]): Promise<StagedMutation> {
     const targetPath = '/etc/modprobe.d/gpu-optimizer.conf';
 
     const header = [
@@ -193,7 +193,7 @@ export function writeModprobeConfig(rules: OptimizationRule[]): StagedMutation {
         }
     }
 
-    const stagedPath = stageFile(newContent, 'modprobe-');
+    const stagedPath = await stageFile(newContent, 'modprobe-');
     const diff = generateDiff(originalContent, newContent);
 
     return { stagedPath, targetPath, diff };

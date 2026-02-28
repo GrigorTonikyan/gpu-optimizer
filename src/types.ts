@@ -121,6 +121,8 @@ export interface OptimizationRule {
     value: string;
     /** Whether this is recommended for stability or optional for power users */
     severity: OptimizationSeverity;
+    /** Whether this optimization is already applied to the system */
+    isApplied?: boolean;
 }
 
 /**

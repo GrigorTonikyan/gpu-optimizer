@@ -10,6 +10,7 @@ export {
 } from './optimize';
 export {
     createBackup,
+    createManualBackup,
     listBackups,
     deleteBackup,
     exportBackup,

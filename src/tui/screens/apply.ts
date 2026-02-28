@@ -46,7 +46,7 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
     }
 
     const allRules = [...analysis.recommended, ...analysis.optional];
-    const selected = new Set<string>(analysis.recommended.map(r => r.id));
+    const selected = new Set<string>(analysis.recommended.filter(r => !r.isApplied).map(r => r.id));
     let cursor = 0;
 
     async function render(): Promise<void> {
@@ -64,6 +64,7 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         for (let i = 0; i < allRules.length; i++) {
             const rule = allRules[i]!;
             const isSelected = selected.has(rule.id);
+            const isApplied = rule.isApplied;
             const isCursor = i === cursor;
             const isRecommended = rule.severity === 'recommended';
 
@@ -75,18 +76,22 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
                 terminal.write('   ');
             }
 
-            terminal.write(isSelected ? ' [✓] ' : ' [ ] ');
+            if (isApplied) {
+                terminal.write(pc.dim(' [DONE] '));
+            } else {
+                terminal.write(isSelected ? ' [✓] ' : ' [ ] ');
+            }
 
             if (isRecommended) {
-                terminal.write(pc.green('[REC] '));
+                terminal.write(isApplied ? pc.dim('[REC] ') : pc.green('[REC] '));
             } else {
                 terminal.write(pc.dim('[OPT] '));
             }
 
             if (isCursor) {
-                terminal.write(pc.bold(rule.description));
+                terminal.write(pc.bold(isApplied ? pc.dim(rule.description) : rule.description));
             } else {
-                terminal.write(rule.description);
+                terminal.write(isApplied ? pc.dim(rule.description) : rule.description);
             }
         }
 
@@ -116,6 +121,7 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
             }
             if (key === ' ') {
                 const rule = allRules[cursor]!;
+                if (rule.isApplied) return; // Prevent toggling already applied rules
                 if (selected.has(rule.id)) {
                     selected.delete(rule.id);
                 } else {
@@ -157,7 +163,7 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
             return;
         }
 
-        const { mutations, warnings } = stageOptimizations(profile, selectedRules);
+        const { mutations, warnings } = await stageOptimizations(profile, selectedRules);
 
         const config = await getSettings();
         refreshChrome(config);
@@ -182,6 +188,12 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
             return;
         }
 
+        if (config.dryMode) {
+            terminal.moveTo(3, row++);
+            terminal.write(pc.bold(pc.yellow('⚠  DRY MODE ACTIVE  │  Simulation only  │  No changes will be written')));
+            row++;
+        }
+
         for (const mut of mutations) {
             terminal.moveTo(3, row++);
             terminal.write(pc.bold(`File: ${mut.targetPath}`));
@@ -197,7 +209,8 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         }
 
         terminal.moveTo(3, row++);
-        terminal.write(pc.bold('Apply these changes? (requires sudo) [y/N] '));
+        const actionLabel = config.dryMode ? pc.yellow('Simulate') : pc.red('Apply');
+        terminal.write(pc.bold(`${actionLabel} these changes? [y/N] `));
 
         const confirmed = await new Promise<boolean>((resolve) => {
             const handler = (key: string) => {
@@ -209,24 +222,25 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
 
         if (!confirmed) {
             terminal.moveTo(3, row + 1);
-            terminal.write(pc.yellow('Changes not applied.'));
+            terminal.write(pc.yellow('Action canceled.'));
             await waitForKeyWithDelay(1500);
             return;
         }
 
-        const result = applyMutations(mutations);
+        const result = await applyMutations(mutations);
 
         clearContent();
         row = 4;
 
         if (result.success) {
+            const statusLabel = config.dryMode ? pc.yellow('simulated') : pc.green('applied');
             terminal.moveTo(3, row++);
-            terminal.write(pc.green('✓ Changes applied successfully!'));
+            terminal.write(`${pc.green('✓')} Changes ${statusLabel} successfully!`);
             terminal.moveTo(3, row++);
-            terminal.write(pc.dim(`Backup ID: ${result.backupId}`));
+            terminal.write(pc.dim(`Snapshot ID: ${result.backupId}`));
             row++;
 
-            if (profile.initramfs !== 'Unknown') {
+            if (result.appliedMutations.length > 0 && !config.dryMode && profile.initramfs !== 'Unknown') {
                 terminal.moveTo(3, row++);
                 terminal.write(`Rebuild initramfs using ${profile.initramfs}? [y/N] `);
 
@@ -251,7 +265,8 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
             }
 
             terminal.moveTo(3, row + 1);
-            terminal.write(pc.bold(pc.green('All optimizations applied!')));
+            const finalLabel = config.dryMode ? pc.yellow('Simulation complete!') : pc.green('All optimizations applied!');
+            terminal.write(pc.bold(finalLabel));
         } else {
             terminal.moveTo(3, row++);
             terminal.write(pc.red(`✗ Apply failed: ${result.error}`));

@@ -11,6 +11,48 @@ import { FsService } from '../services/fs';
 import { Logger } from '../utils/logger';
 
 /**
+ * Discovers and creates a new system backup snapshot.
+ * Automatically finds standard locations for GRUB, systemd-boot, modprobe, and udev.
+ * 
+ * @returns A promise resolving to the created BackupRecord
+ */
+export async function createManualBackup(): Promise<BackupRecord> {
+    const config = await loadConfig();
+    const backupDir = getBackupDirectory(config);
+
+    const standardPaths = [
+        '/etc/default/grub',
+        '/etc/modprobe.d/gpu-optimizer.conf',
+        '/etc/udev/rules.d/99-gpu-power.rules',
+        '/etc/X11/xorg.conf',
+        '/etc/X11/xorg.conf.d/10-nvidia.conf',
+    ];
+
+    // Check systemd-boot entries
+    try {
+        const sdEntries = await FsService.traverse('/boot/loader/entries', '', false);
+        for (const entry of sdEntries) {
+            standardPaths.push(join('/boot/loader/entries', entry));
+        }
+    } catch { /* Ignore if directory doesn't exist */ }
+
+    const combinedPaths = [...new Set([...standardPaths, ...config.backupPaths.sources])];
+    const existingPaths: string[] = [];
+
+    for (const p of combinedPaths) {
+        if (await FsService.exists(p)) {
+            existingPaths.push(p);
+        }
+    }
+
+    if (existingPaths.length === 0) {
+        throw new Error('No configuration files discovered to back up.');
+    }
+
+    return engineCreateSnapshot(existingPaths, backupDir, config);
+}
+
+/**
  * Triggers a new system backup snapshot.
  * Discovers current configuration files and creates a timestamped archive.
  * 

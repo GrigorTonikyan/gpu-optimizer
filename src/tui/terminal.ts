@@ -133,7 +133,7 @@ export function parseKeys(data: Buffer): KeyName[] {
                 if (seq === '3' && final === '~') { keys.push('DELETE'); i = j; continue; }
 
                 keys.push('ESCAPE');
-                i = j;
+                i += 1;
                 continue;
             }
 

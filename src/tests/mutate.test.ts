@@ -42,7 +42,7 @@ describe('Mutation Engine — generateDiff', () => {
 });
 
 describe('Mutation Engine — injectGrub', () => {
-    it('appends parameters to GRUB_CMDLINE_LINUX_DEFAULT', () => {
+    it('appends parameters to GRUB_CMDLINE_LINUX_DEFAULT', async () => {
         const grubContent = [
             '# GRUB config',
             'GRUB_DEFAULT=0',
@@ -51,7 +51,7 @@ describe('Mutation Engine — injectGrub', () => {
         ].join('\n');
 
         const configPath = createTempFile(grubContent, 'grub-');
-        const result = injectGrub(['nvidia-drm.modeset=1'], configPath);
+        const result = await injectGrub(['nvidia-drm.modeset=1'], configPath);
 
         const staged = readFileSync(result.stagedPath, 'utf-8');
         expect(staged).toContain('nvidia-drm.modeset=1');
@@ -64,11 +64,11 @@ describe('Mutation Engine — injectGrub', () => {
         unlinkSync(configPath);
     });
 
-    it('deduplicates existing parameters', () => {
+    it('deduplicates existing parameters', async () => {
         const grubContent = 'GRUB_CMDLINE_LINUX_DEFAULT="quiet nvidia-drm.modeset=0"';
         const configPath = createTempFile(grubContent, 'grub-dedup-');
 
-        const result = injectGrub(['nvidia-drm.modeset=1'], configPath);
+        const result = await injectGrub(['nvidia-drm.modeset=1'], configPath);
         const staged = readFileSync(result.stagedPath, 'utf-8');
 
         /** Should have modeset=1 (new), not modeset=0 (old) */
@@ -79,7 +79,7 @@ describe('Mutation Engine — injectGrub', () => {
         unlinkSync(configPath);
     });
 
-    it('preserves other lines in the config', () => {
+    it('preserves other lines in the config', async () => {
         const grubContent = [
             'GRUB_DEFAULT=0',
             'GRUB_CMDLINE_LINUX_DEFAULT="quiet"',
@@ -87,7 +87,7 @@ describe('Mutation Engine — injectGrub', () => {
         ].join('\n');
 
         const configPath = createTempFile(grubContent, 'grub-preserve-');
-        const result = injectGrub(['test.param=1'], configPath);
+        const result = await injectGrub(['test.param=1'], configPath);
         const staged = readFileSync(result.stagedPath, 'utf-8');
 
         expect(staged).toContain('GRUB_DEFAULT=0');
@@ -97,15 +97,15 @@ describe('Mutation Engine — injectGrub', () => {
         unlinkSync(configPath);
     });
 
-    it('throws when GRUB_CMDLINE_LINUX_DEFAULT is not found', () => {
+    it('throws when GRUB_CMDLINE_LINUX_DEFAULT is not found', async () => {
         const configPath = createTempFile('GRUB_DEFAULT=0\nGRUB_TIMEOUT=5', 'grub-nodefault-');
-        expect(() => injectGrub(['param=1'], configPath)).toThrow('Could not find GRUB_CMDLINE_LINUX_DEFAULT');
+        await expect(injectGrub(['param=1'], configPath)).rejects.toThrow('Could not find GRUB_CMDLINE_LINUX_DEFAULT');
         unlinkSync(configPath);
     });
 });
 
 describe('Mutation Engine — injectSystemdBoot', () => {
-    it('appends parameters to the options line', () => {
+    it('appends parameters to the options line', async () => {
         const bootContent = [
             'title   Arch Linux',
             'linux   /vmlinuz-linux',
@@ -114,7 +114,7 @@ describe('Mutation Engine — injectSystemdBoot', () => {
         ].join('\n');
 
         const configPath = createTempFile(bootContent, 'sdboot-');
-        const result = injectSystemdBoot(['nvidia-drm.modeset=1'], configPath);
+        const result = await injectSystemdBoot(['nvidia-drm.modeset=1'], configPath);
         const staged = readFileSync(result.stagedPath, 'utf-8');
 
         expect(staged).toContain('nvidia-drm.modeset=1');
@@ -125,11 +125,11 @@ describe('Mutation Engine — injectSystemdBoot', () => {
         unlinkSync(configPath);
     });
 
-    it('deduplicates existing parameters', () => {
+    it('deduplicates existing parameters', async () => {
         const bootContent = 'options root=UUID=abc rw nvidia-drm.modeset=0';
         const configPath = createTempFile(bootContent, 'sdboot-dedup-');
 
-        const result = injectSystemdBoot(['nvidia-drm.modeset=1'], configPath);
+        const result = await injectSystemdBoot(['nvidia-drm.modeset=1'], configPath);
         const staged = readFileSync(result.stagedPath, 'utf-8');
 
         expect(staged).toContain('nvidia-drm.modeset=1');
@@ -139,15 +139,15 @@ describe('Mutation Engine — injectSystemdBoot', () => {
         unlinkSync(configPath);
     });
 
-    it('throws when no options line is found', () => {
+    it('throws when no options line is found', async () => {
         const configPath = createTempFile('title Arch\nlinux /vmlinuz', 'sdboot-noopts-');
-        expect(() => injectSystemdBoot(['param=1'], configPath)).toThrow("Could not find 'options' line");
+        await expect(injectSystemdBoot(['param=1'], configPath)).rejects.toThrow("Could not find 'options' line");
         unlinkSync(configPath);
     });
 });
 
 describe('Mutation Engine — writeModprobeConfig', () => {
-    it('generates modprobe config with rule values', () => {
+    it('generates modprobe config with rule values', async () => {
         const rules: OptimizationRule[] = [
             {
                 id: 'intel-guc',
@@ -159,7 +159,7 @@ describe('Mutation Engine — writeModprobeConfig', () => {
             },
         ];
 
-        const result = writeModprobeConfig(rules);
+        const result = await writeModprobeConfig(rules);
         const staged = readFileSync(result.stagedPath, 'utf-8');
 
         expect(staged).toContain('options i915 enable_guc=3 enable_fbc=1');
@@ -169,13 +169,13 @@ describe('Mutation Engine — writeModprobeConfig', () => {
         unlinkSync(result.stagedPath);
     });
 
-    it('handles multiple rules', () => {
+    it('handles multiple rules', async () => {
         const rules: OptimizationRule[] = [
             { id: 'r1', vendor: 'Intel', description: 'd1', target: 'modprobe', value: 'options i915 enable_guc=3', severity: 'recommended' },
             { id: 'r2', vendor: 'Intel', description: 'd2', target: 'modprobe', value: 'options xe', severity: 'optional' },
         ];
 
-        const result = writeModprobeConfig(rules);
+        const result = await writeModprobeConfig(rules);
         const staged = readFileSync(result.stagedPath, 'utf-8');
 
         expect(staged).toContain('options i915 enable_guc=3');
@@ -184,12 +184,12 @@ describe('Mutation Engine — writeModprobeConfig', () => {
         unlinkSync(result.stagedPath);
     });
 
-    it('returns a diff for new file creation', () => {
+    it('returns a diff for new file creation', async () => {
         const rules: OptimizationRule[] = [
             { id: 'r1', vendor: 'AMD', description: 'd1', target: 'modprobe', value: 'options amdgpu ppfeaturemask=0xffffffff', severity: 'optional' },
         ];
 
-        const result = writeModprobeConfig(rules);
+        const result = await writeModprobeConfig(rules);
         expect(result.diff).toBeTruthy();
 
         unlinkSync(result.stagedPath);

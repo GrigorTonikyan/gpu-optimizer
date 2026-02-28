@@ -2,7 +2,7 @@ import pc from 'picocolors';
 import { terminal } from '../terminal';
 import { clearContent, refreshChrome } from '../app';
 import { getSettings } from '../../controllers';
-import { listBackups, deleteBackup, rollbackToSnapshot, exportBackup, importBackup } from '../../controllers';
+import { listBackups, deleteBackup, rollbackToSnapshot, exportBackup, importBackup, createManualBackup } from '../../controllers';
 import { rebuildInitramfs } from '../../controllers';
 import type { SystemProfile } from '../../types';
 
@@ -24,6 +24,7 @@ export async function showBackupManagement(profile: SystemProfile): Promise<void
         row++;
 
         const menuItems = [
+            '🆕  Create New Backup',
             '📋  List Backups',
             '🗑️   Delete Backup',
             '📤  Export Backup',
@@ -38,24 +39,61 @@ export async function showBackupManagement(profile: SystemProfile): Promise<void
             exitOnUnexpectedKey: true,
         });
 
-        const action = response.canceled ? 5
-            : (response.unexpectedKey === 'q' || response.unexpectedKey === 'ESCAPE') ? 5
+        const action = response.canceled ? 6
+            : (response.unexpectedKey === 'q' || response.unexpectedKey === 'ESCAPE') ? 6
                 : response.selectedIndex;
 
-        if (action === 5) return;
+        if (action === 6) return;
 
         if (action === 0) {
-            await showBackupList();
+            await showCreateBackup();
         } else if (action === 1) {
-            await showDeleteBackup();
+            await showBackupList();
         } else if (action === 2) {
-            await showExportBackup();
+            await showDeleteBackup();
         } else if (action === 3) {
-            await showImportBackup();
+            await showExportBackup();
         } else if (action === 4) {
+            await showImportBackup();
+        } else if (action === 5) {
             await showRollback(profile);
         }
     }
+}
+
+/**
+ * Triggers a manual system backup and shows progress.
+ */
+async function showCreateBackup(): Promise<void> {
+    const config = await getSettings();
+    refreshChrome(config);
+    clearContent();
+
+    terminal.moveTo(3, 4);
+    terminal.write(pc.cyan('Creating system backup...'));
+
+    try {
+        const record = await createManualBackup();
+        const successCfg = await getSettings();
+        refreshChrome(successCfg);
+        clearContent();
+        terminal.moveTo(3, 4);
+        terminal.write(pc.green('✓ Backup created successfully!'));
+        terminal.moveTo(3, 6);
+        terminal.write(pc.dim(`ID:   ${record.id}`));
+        terminal.moveTo(3, 7);
+        terminal.write(pc.dim(`Files: ${record.files.length}`));
+    } catch (e: any) {
+        const errCfg = await getSettings();
+        refreshChrome(errCfg);
+        clearContent();
+        terminal.moveTo(3, 4);
+        terminal.write(pc.red(`✗ Backup failed: ${e.message}`));
+    }
+
+    terminal.moveTo(3, 9);
+    terminal.write(pc.dim('Press any key to go back...'));
+    await waitForKey();
 }
 
 /**
