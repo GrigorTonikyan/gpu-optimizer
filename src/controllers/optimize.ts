@@ -2,6 +2,7 @@ import type { SystemProfile, OptimizationRule, OptimizationPlan, StagedMutation 
 import { generateOptimizationPlan } from '../engine/matrix';
 import { enrichRuleStatus } from '../engine/status';
 import { injectGrub, injectSystemdBoot, writeModprobeConfig, applyStaged, triggerRebuild } from '../engine/mutate';
+import { resolveSystemdBootConfigElevated } from '../discovery/boot';
 import { createSnapshot } from '../engine/backup';
 import { getBackupDirectory, loadConfig } from '../config';
 import { Logger } from '../utils/logger';
@@ -93,10 +94,15 @@ export async function stageOptimizations(
         if (profile.bootloader.type === 'GRUB') {
             mutations.push(await injectGrub(kernelParams, profile.bootloader.configPath));
         } else if (profile.bootloader.type === 'systemd-boot') {
-            if (!profile.bootloader.configPath) {
-                warnings.push('systemd-boot detected but entry config path not readable. Kernel param injection requires elevated read access.');
+            let configPath = profile.bootloader.configPath;
+            if (!configPath) {
+                configPath = resolveSystemdBootConfigElevated(profile.kernelVersion);
+            }
+
+            if (!configPath) {
+                warnings.push('systemd-boot detected but entry config path not readable even with elevation.');
             } else {
-                mutations.push(await injectSystemdBoot(kernelParams, profile.bootloader.configPath));
+                mutations.push(await injectSystemdBoot(kernelParams, configPath));
             }
         } else {
             warnings.push('Unknown bootloader — cannot inject kernel parameters automatically.');

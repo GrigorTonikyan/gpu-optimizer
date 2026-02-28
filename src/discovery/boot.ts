@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, accessSync, constants } from 'node:fs';
 import { join } from 'node:path';
+import { runElevated } from '../utils/shell';
 import type { BootloaderType } from '../types';
 
 /**
@@ -76,6 +77,43 @@ function resolveSystemdBootConfig(candidateDirs: string[], kernelVersion: string
     } catch {
         return '';
     }
+}
+
+/**
+ * Elevated version of resolveSystemdBootConfig that uses sudo to list and read entries.
+ * Called only when injection is requested and initial discovery failed due to permissions.
+ */
+export function resolveSystemdBootConfigElevated(kernelVersion: string): string {
+    const candidateDirs = [
+        '/boot/loader/entries',
+        '/efi/loader/entries',
+        '/boot/efi/loader/entries'
+    ];
+
+    for (const dir of candidateDirs) {
+        try {
+            // Use sudo to list files in the directory
+            const filesOutput = runElevated(`ls '${dir}'`).split('\n').filter(f => f.endsWith('.conf'));
+
+            for (const file of filesOutput) {
+                const fullPath = join(dir, file.trim());
+                const content = runElevated(`cat '${fullPath}'`);
+                if (content.includes(kernelVersion)) {
+                    return fullPath;
+                }
+            }
+
+            // Fallback to first non-fallback entry if exact kernel match not found
+            if (filesOutput.length > 0) {
+                const bestMatch = filesOutput.find(f => !f.includes('fallback') && !f.includes('rescue')) ?? filesOutput[0];
+                return join(dir, bestMatch!.trim());
+            }
+        } catch {
+            continue;
+        }
+    }
+
+    return '';
 }
 
 /**
