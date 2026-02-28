@@ -1,4 +1,10 @@
 import pc from 'picocolors';
+import fs from 'fs';
+
+const DEBUG_LOG = '/tmp/gpu-optimizer-tui.log';
+function log(msg: string) {
+    fs.appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${msg}\n`);
+}
 
 /**
  * ANSI escape code constants for terminal control sequences.
@@ -12,6 +18,7 @@ const ESC = {
     CURSOR_SHOW: '\x1b[?25h',
     ERASE_LINE: '\x1b[2K',
     CLEAR_SCREEN: '\x1b[2J',
+    CLEAR_DOWN: '\x1b[J',
     RESET_STYLE: '\x1b[0m',
     CURSOR_HOME: '\x1b[H',
 } as const;
@@ -88,6 +95,8 @@ interface InputFieldOptions {
     cancelable?: boolean;
     /** Optional hook for providing autocomplete suggestions */
     onAutocomplete?: (current: string) => Promise<string[] | string>;
+    /** Optional prompt to show above the input line */
+    prompt?: string;
 }
 
 /**
@@ -105,28 +114,32 @@ export function parseKeys(data: Buffer): KeyName[] {
     while (i < data.length) {
         const byte = data[i]!;
 
+        // Handle Escape sequences
         if (byte === 0x1b) {
             if (i + 1 < data.length && data[i + 1] === 0x5b) {
-                const seq = data[i + 2];
-                if (seq === 0x41) { keys.push('UP'); i += 3; continue; }
-                if (seq === 0x42) { keys.push('DOWN'); i += 3; continue; }
-                if (seq === 0x43) { keys.push('RIGHT'); i += 3; continue; }
-                if (seq === 0x44) { keys.push('LEFT'); i += 3; continue; }
-                if (seq === 0x48) { keys.push('HOME'); i += 3; continue; }
-                if (seq === 0x46) { keys.push('END'); i += 3; continue; }
+                // CSI (Control Sequence Introducer)
+                let j = i + 2;
+                let seq = '';
+                while (j < data.length && data[j]! >= 0x30 && data[j]! <= 0x3f) {
+                    seq += String.fromCharCode(data[j]!);
+                    j++;
+                }
+                const final = data[j] !== undefined ? String.fromCharCode(data[j]!) : '';
+                j++;
 
-                if (seq === 0x35 && i + 3 < data.length && data[i + 3] === 0x7e) {
-                    keys.push('PAGE_UP'); i += 4; continue;
-                }
-                if (seq === 0x36 && i + 3 < data.length && data[i + 3] === 0x7e) {
-                    keys.push('PAGE_DOWN'); i += 4; continue;
-                }
-                if (seq === 0x33 && i + 3 < data.length && data[i + 3] === 0x7e) {
-                    keys.push('DELETE'); i += 4; continue;
-                }
+                if (final === 'A') { keys.push('UP'); i = j; continue; }
+                if (final === 'B') { keys.push('DOWN'); i = j; continue; }
+                if (final === 'C') { keys.push('RIGHT'); i = j; continue; }
+                if (final === 'D') { keys.push('LEFT'); i = j; continue; }
+                if (final === 'H') { keys.push('HOME'); i = j; continue; }
+                if (final === 'F') { keys.push('END'); i = j; continue; }
+
+                if (seq === '5' && final === '~') { keys.push('PAGE_UP'); i = j; continue; }
+                if (seq === '6' && final === '~') { keys.push('PAGE_DOWN'); i = j; continue; }
+                if (seq === '3' && final === '~') { keys.push('DELETE'); i = j; continue; }
 
                 keys.push('ESCAPE');
-                i += 1;
+                i = j;
                 continue;
             }
 
@@ -135,6 +148,7 @@ export function parseKeys(data: Buffer): KeyName[] {
             continue;
         }
 
+        // Control characters
         if (byte === 0x03) { keys.push('CTRL_C'); i += 1; continue; }
         if (byte === 0x04) { keys.push('CTRL_D'); i += 1; continue; }
         if (byte === 0x01) { keys.push('CTRL_A'); i += 1; continue; }
@@ -143,8 +157,23 @@ export function parseKeys(data: Buffer): KeyName[] {
         if (byte === 0x7f || byte === 0x08) { keys.push('BACKSPACE'); i += 1; continue; }
         if (byte === 0x09) { keys.push('TAB'); i += 1; continue; }
 
-        const char = String.fromCharCode(byte);
-        keys.push(char);
+        // Normal characters / UTF-8
+        if (byte >= 32) {
+            try {
+                // Attempt to decode as much as possible as UTF-8
+                const char = data.subarray(i).toString('utf8');
+                if (char.length > 0) {
+                    // Only take the first character's worth of bytes
+                    const firstChar = Array.from(char)[0]!;
+                    keys.push(firstChar);
+                    i += Buffer.from(firstChar, 'utf8').length;
+                    continue;
+                }
+            } catch {
+                // Fallback to single byte if UTF-8 fails
+                keys.push(String.fromCharCode(byte));
+            }
+        }
         i += 1;
     }
 
@@ -236,6 +265,13 @@ export class Terminal {
     }
 
     /**
+     * Clears everything on the current line to the right of the cursor.
+     */
+    clearDown(): void {
+        this.write(ESC.CLEAR_DOWN);
+    }
+
+    /**
      * Resets all text styling (colors, bold, dim, etc.).
      */
     styleReset(): void {
@@ -260,7 +296,7 @@ export class Terminal {
             this.stdinListener = (data: Buffer) => {
                 const keys = parseKeys(data);
                 for (const key of keys) {
-                    for (const handler of this.keyHandlers) {
+                    for (const handler of Array.from(this.keyHandlers)) {
                         handler(key);
                     }
                 }
@@ -409,72 +445,80 @@ export class Terminal {
         const cancelable = options.cancelable ?? false;
         let autocompleteIndex = -1;
 
+        const startX = 3;
+        const startY = this.height - 1;
+
+        const renderInput = () => {
+            if (options.prompt) {
+                this.moveTo(startX, startY - 1);
+                this.eraseLine();
+                this.write(pc.dim(options.prompt));
+            }
+            this.moveTo(startX, startY);
+            this.eraseLine();
+            this.write(`${pc.cyan('❯')} ${value}`);
+            this.hideCursor(false);
+        };
+
         this.hideCursor(false);
-        this.write(value);
+        renderInput();
 
         return new Promise<string>((resolve) => {
             const handler = async (key: KeyName) => {
                 if (key === 'ENTER') {
                     this.removeKeyListener(handler);
                     this.hideCursor(true);
-                    this.write('\n');
+                    this.moveTo(startX, startY);
+                    this.eraseLine();
+                    if (options.prompt) {
+                        this.moveTo(startX, startY - 1);
+                        this.eraseLine();
+                    }
                     resolve(value);
                     return;
                 }
                 if (cancelable && key === 'ESCAPE') {
                     this.removeKeyListener(handler);
                     this.hideCursor(true);
+                    this.moveTo(startX, startY);
+                    this.eraseLine();
+                    if (options.prompt) {
+                        this.moveTo(startX, startY - 1);
+                        this.eraseLine();
+                    }
                     resolve('');
                     return;
                 }
                 if (key === 'TAB' && options.onAutocomplete) {
                     const result = await options.onAutocomplete(value);
                     if (typeof result === 'string') {
-                        // Direct replacement
-                        const diff = result.slice(value.length);
                         value = result;
-                        this.write(diff);
                     } else if (Array.isArray(result) && result.length > 0) {
-                        // Cycling through results (simple implementation for now)
                         autocompleteIndex = (autocompleteIndex + 1) % result.length;
-                        const suggestion = result[autocompleteIndex];
-
-                        if (suggestion !== undefined) {
-                            // Clear current line from cursor
-                            for (let i = 0; i < value.length; i++) this.write('\b \b');
-                            value = suggestion;
-                            this.write(value);
-                        }
+                        value = result[autocompleteIndex]!;
                     }
+                    renderInput();
                     return;
                 }
 
-                // Any other key resets autocomplete
                 autocompleteIndex = -1;
 
                 if (key === 'BACKSPACE') {
                     if (value.length > 0) {
                         value = value.slice(0, -1);
-                        this.write('\b \b');
+                        renderInput();
                     }
                     return;
                 }
+
+                // Append normal characters
                 if (key.length === 1 && key.charCodeAt(0) >= 32) {
                     value += key;
-                    this.write(key);
+                    renderInput();
                 }
             };
             this.onKey(handler);
         });
-    }
-
-    /**
-     * Approximates the current cursor column position.
-     * Used internally by inputField for positioning.
-     * Returns a reasonable default since exact cursor query is async.
-     */
-    private getCursorApproxCol(): number {
-        return 1;
     }
 }
 

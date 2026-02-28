@@ -230,12 +230,10 @@ async function showImportBackup(): Promise<void> {
     refreshChrome(cfg);
     clearContent();
 
-    terminal.moveTo(3, 4);
-    terminal.write(pc.bold(pc.cyan('Import Backup')));
-    terminal.moveTo(3, 6);
-    terminal.write('Enter path to .tar.gz archive: ');
-
-    const archivePath = await terminal.inputField({ cancelable: true });
+    const archivePath = await terminal.inputField({
+        cancelable: true,
+        prompt: 'Enter path to .tar.gz archive',
+    });
 
     if (!archivePath) return;
 

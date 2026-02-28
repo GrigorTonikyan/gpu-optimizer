@@ -122,14 +122,11 @@ export async function showSettings(): Promise<void> {
                 } else if (field.type === 'text') {
                     terminal.removeKeyListener(handler);
 
-                    const editRow = 4 + 3 + cursor; // (Start Row 4) + (Title + Help Row + Blank Row) + cursor
-                    terminal.moveTo(3, editRow + fields.length + 2);
-                    terminal.write(`New value for ${field.label}: `);
-
                     const currentValue = getFieldValue(field.id);
                     const newValue = await terminal.inputField({
                         default: currentValue ? String(currentValue) : '',
                         cancelable: true,
+                        prompt: `Editing ${field.label}`,
                     });
 
                     if (newValue !== undefined) {
