@@ -17,7 +17,8 @@ export class FsService {
      * @returns Resolved absolute path
      */
     static resolveXdgPath(envVar: string, fallback: string, ...segments: string[]): string {
-        const base = Bun.env[envVar] || join(homedir(), fallback);
+        const home = homedir() || '/tmp';
+        const base = Bun.env[envVar] || join(home, fallback);
         return join(base, 'gpu-optimizer', ...segments);
     }
 

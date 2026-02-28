@@ -1,10 +1,4 @@
 import pc from 'picocolors';
-import fs from 'fs';
-
-const DEBUG_LOG = '/tmp/gpu-optimizer-tui.log';
-function log(msg: string) {
-    fs.appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${msg}\n`);
-}
 
 /**
  * ANSI escape code constants for terminal control sequences.

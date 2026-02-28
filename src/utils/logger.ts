@@ -35,10 +35,19 @@ export class Logger {
             const { getLogPath } = await import('../config');
             this.logFile = await getLogPath(config);
 
-            // Ensure log directory exists
-            const { mkdir } = await import('node:fs/promises');
-            const logDir = join(this.logFile, '..');
-            await mkdir(logDir, { recursive: true });
+            if (this.logFile) {
+                // Ensure log directory exists
+                try {
+                    const { mkdir } = await import('node:fs/promises');
+                    const logDir = join(this.logFile, '..');
+                    await mkdir(logDir, { recursive: true });
+                } catch (e) {
+                    console.warn(pc.yellow(`⚠ Could not create log directory: ${e}`));
+                    this.logFile = null;
+                }
+            } else {
+                config.loggingEnabled = false;
+            }
         }
 
         this.isInitialized = true;
