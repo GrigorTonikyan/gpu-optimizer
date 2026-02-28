@@ -12,6 +12,7 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
     - Added `isApplied` status to `OptimizationRule` type.
     - Integrated `/proc/cmdline` and `/etc/modprobe.d/gpu-optimizer.conf` probing into the discovery controller.
     - Updated TUI and CLI to mark applied rules as `[DONE]` and exclude them from default selection.
+    - **Refinement**: Optimized detection to be entirely sudo-less and support multi-parameter rules.
 
 ### Fixed
 - **Documentation**: Removed non-English (Russian) JSDocs from `src/utils/logger.ts` and replaced them with English equivalents.

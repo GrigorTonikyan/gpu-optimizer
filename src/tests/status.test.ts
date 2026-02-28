@@ -1,44 +1,75 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, mock } from 'bun:test';
 import { checkRuleApplied } from '../engine/status';
 import type { OptimizationRule } from '../types';
+
+let mockFs: Record<string, string> = {};
 
 // Mock node:fs
 mock.module('node:fs', () => ({
     readFileSync: (path: string) => {
-        if (path === '/proc/cmdline') {
-            return 'bootstrap_stuff console=ttyS0 nvidia-drm.modeset=1 intel_pstate=passive';
-        }
-        if (path === '/etc/modprobe.d/gpu-optimizer.conf') {
-            return 'options i915 enable_guc=3\n# comment\noptions nvidia NVreg_PreserveVideoMemoryAllocations=1';
-        }
-        throw new Error('File not found');
+        if (mockFs[path]) return mockFs[path];
+        throw new Error(`File not found: ${path}`);
     },
     existsSync: (path: string) => {
-        return path === '/etc/modprobe.d/gpu-optimizer.conf';
+        return !!mockFs[path];
     }
 }));
 
 describe('Status Detection Logic', () => {
     it('detects kernel parameters present in /proc/cmdline', () => {
+        mockFs['/proc/cmdline'] = 'BOOT_IMAGE=/vmlinuz-linux root=UUID=123-456 rw quiet nvidia-drm.modeset=1';
+
         const rule: OptimizationRule = {
             id: 'test-rule',
             vendor: 'NVIDIA',
-            description: 'test',
             target: 'kernel-param',
             value: 'nvidia-drm.modeset=1',
+            description: 'Test',
             severity: 'recommended'
         };
 
         expect(checkRuleApplied(rule)).toBe(true);
     });
 
+    it('detects multiple kernel parameters in a single rule', () => {
+        mockFs['/proc/cmdline'] = 'BOOT_IMAGE=/vmlinuz-linux i915.enable_guc=3 i915.enable_fbc=1 quiet';
+
+        const rule: OptimizationRule = {
+            id: 'intel-combo',
+            vendor: 'Intel',
+            target: 'kernel-param',
+            value: 'i915.enable_guc=3 i915.enable_fbc=1',
+            description: 'Intel Combo',
+            severity: 'recommended'
+        };
+
+        expect(checkRuleApplied(rule)).toBe(true);
+    });
+
+    it('returns false if only some parameters are present', () => {
+        mockFs['/proc/cmdline'] = 'BOOT_IMAGE=/vmlinuz-linux i915.enable_guc=3 quiet';
+
+        const rule: OptimizationRule = {
+            id: 'intel-combo',
+            vendor: 'Intel',
+            target: 'kernel-param',
+            value: 'i915.enable_guc=3 i915.enable_fbc=1',
+            description: 'Intel Combo',
+            severity: 'recommended'
+        };
+
+        expect(checkRuleApplied(rule)).toBe(false);
+    });
+
     it('returns false for kernel parameters NOT in /proc/cmdline', () => {
+        mockFs['/proc/cmdline'] = 'BOOT_IMAGE=/vmlinuz-linux quiet';
+
         const rule: OptimizationRule = {
             id: 'test-rule',
-            vendor: 'AMD',
-            description: 'test',
+            vendor: 'NVIDIA',
             target: 'kernel-param',
-            value: 'amdgpu.sg_display=0',
+            value: 'nvidia-drm.modeset=1',
+            description: 'Test',
             severity: 'recommended'
         };
 
@@ -46,6 +77,8 @@ describe('Status Detection Logic', () => {
     });
 
     it('detects modprobe options in gpu-optimizer.conf', () => {
+        mockFs['/etc/modprobe.d/gpu-optimizer.conf'] = 'options i915 enable_guc=3';
+
         const rule: OptimizationRule = {
             id: 'test-rule',
             vendor: 'Intel',
@@ -59,6 +92,8 @@ describe('Status Detection Logic', () => {
     });
 
     it('returns false for modprobe options NOT in gpu-optimizer.conf', () => {
+        mockFs['/etc/modprobe.d/gpu-optimizer.conf'] = 'options i915 enable_guc=3';
+
         const rule: OptimizationRule = {
             id: 'test-rule',
             vendor: 'NVIDIA',
