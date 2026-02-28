@@ -2,7 +2,7 @@ import pc from 'picocolors';
 import { terminal } from '../terminal';
 import { clearContent, refreshChrome } from '../app';
 import { getSettings, updateSettings, resetSettings } from '../../controllers';
-import type { AppConfig } from '../../types';
+import type { AppConfig, LogLevel } from '../../types';
 
 /**
  * TUI screen for the settings editor.
@@ -10,21 +10,36 @@ import type { AppConfig } from '../../types';
  * and persist changes immediately.
  */
 export async function showSettings(): Promise<void> {
-    let config = getSettings();
+    let config = await getSettings();
     let cursor = 0;
 
-    const fields: Array<{
-        key: keyof AppConfig;
-        label: string;
-        type: 'toggle' | 'select' | 'text';
-        options?: string[];
-    }> = [
-            { key: 'dryMode', label: 'Dry Mode (Simulation)', type: 'toggle' },
-            { key: 'verbosity', label: 'Verbosity Level', type: 'select', options: ['0 — Quiet', '1 — Normal', '2 — Verbose'] },
-            { key: 'loggingEnabled', label: 'File Logging', type: 'toggle' },
-            { key: 'logDirectory', label: 'Log Directory', type: 'text' },
-            { key: 'backupDirectory', label: 'Backup Directory', type: 'text' },
-        ];
+    const VERBOSITY_LEVELS: LogLevel[] = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'];
+
+    const fields = [
+        { id: 'dryMode', label: 'Dry Mode (Simulation)', type: 'toggle' as const },
+        { id: 'verbosity', label: 'Verbosity Level', type: 'select' as const, options: VERBOSITY_LEVELS },
+        { id: 'loggingEnabled', label: 'File Logging', type: 'toggle' as const },
+        { id: 'logDirectory', label: 'Log Directory', type: 'text' as const },
+        { id: 'backupDirectory', label: 'Backup Directory', type: 'text' as const },
+    ];
+
+    function getFieldValue(id: string): any {
+        if (id === 'logDirectory') return config.paths.logs;
+        if (id === 'backupDirectory') return config.backupPaths.primary;
+        return (config as any)[id];
+    }
+
+    async function setFieldValue(id: string, value: any): Promise<void> {
+        let changes: Partial<AppConfig> = {};
+        if (id === 'logDirectory') {
+            changes = { paths: { ...config.paths, logs: String(value) } };
+        } else if (id === 'backupDirectory') {
+            changes = { backupPaths: { ...config.backupPaths, primary: String(value) } };
+        } else {
+            changes = { [id]: value };
+        }
+        config = await updateSettings(changes);
+    }
 
     function render(): void {
         refreshChrome();
@@ -40,7 +55,7 @@ export async function showSettings(): Promise<void> {
         for (let i = 0; i < fields.length; i++) {
             const field = fields[i]!;
             const isCursor = i === cursor;
-            const value = config[field.key];
+            const value = getFieldValue(field.id);
 
             terminal.moveTo(3, row + i);
 
@@ -52,13 +67,12 @@ export async function showSettings(): Promise<void> {
 
             terminal.write(` ${field.label}: `);
 
-            if (field.type === 'toggle') {
+            if (field.id === 'verbosity') {
+                terminal.write(pc.bold(pc.yellow(String(value).toUpperCase())));
+            } else if (field.type === 'toggle') {
                 terminal.write(value ? pc.bold(pc.green('ON')) : pc.dim('OFF'));
-            } else if (field.type === 'select') {
-                const idx = value as number;
-                terminal.write(pc.bold(field.options?.[idx] ?? String(value)));
             } else {
-                terminal.write(pc.bold(String(value)));
+                terminal.write(pc.bold(String(value ?? pc.dim('undefined'))));
             }
         }
     }
@@ -74,7 +88,7 @@ export async function showSettings(): Promise<void> {
             }
 
             if (key === 'r') {
-                config = resetSettings();
+                config = await resetSettings();
                 render();
                 return;
             }
@@ -95,28 +109,30 @@ export async function showSettings(): Promise<void> {
                 const field = fields[cursor]!;
 
                 if (field.type === 'toggle') {
-                    const current = config[field.key] as boolean;
-                    config = updateSettings({ [field.key]: !current });
+                    const current = getFieldValue(field.id) as boolean;
+                    await setFieldValue(field.id, !current);
                     render();
                 } else if (field.type === 'select') {
-                    const current = config[field.key] as number;
-                    const next = ((current + 1) % 3) as 0 | 1 | 2;
-                    config = updateSettings({ [field.key]: next });
+                    const current = getFieldValue(field.id) as LogLevel;
+                    const idx = VERBOSITY_LEVELS.indexOf(current);
+                    const next = VERBOSITY_LEVELS[(idx + 1) % VERBOSITY_LEVELS.length];
+                    await setFieldValue(field.id, next);
                     render();
                 } else if (field.type === 'text') {
                     terminal.removeKeyListener(handler);
 
-                    const editRow = 4 + 3 + cursor;
+                    const editRow = 4 + 3 + cursor; // (Start Row 4) + (Title + Help Row + Blank Row) + cursor
                     terminal.moveTo(3, editRow + fields.length + 2);
                     terminal.write(`New value for ${field.label}: `);
 
+                    const currentValue = getFieldValue(field.id);
                     const newValue = await terminal.inputField({
-                        default: String(config[field.key]),
+                        default: currentValue ? String(currentValue) : '',
                         cancelable: true,
                     });
 
-                    if (newValue) {
-                        config = updateSettings({ [field.key]: newValue.trim() });
+                    if (newValue !== undefined) {
+                        await setFieldValue(field.id, newValue.trim());
                     }
                     render();
                     terminal.onKey(handler);

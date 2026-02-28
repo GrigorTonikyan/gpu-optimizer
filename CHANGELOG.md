@@ -11,6 +11,8 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 - **Documentation**: Removed non-English (Russian) JSDocs from `src/utils/logger.ts` and replaced them with English equivalents.
 - **Unit Tests**: Fixed TypeScript "possibly undefined" errors in `src/tests/backup.test.ts`.
 - **Informational**: Resolved "unknown word" spell-checker warning in `src/engine/backup.ts` by refining the timestamp format documentation.
+- **TUI**: Fixed the broken Settings submenu by correcting async/await handling and aligning UI fields with the `AppConfig` schema.
+- **Config**: Improved configuration migration logic in `src/config/index.ts` to handle corrupted `null` values for `verbosity`.
 
 ## [0.3.0] - 2026-02-25T11:22:00+04:00
 

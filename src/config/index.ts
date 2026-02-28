@@ -73,10 +73,13 @@ export async function loadConfig(): Promise<AppConfig> {
     }
 
     try {
-        // Handle legacy numeric verbosity migration if needed
+        // Handle legacy numeric or invalid verbosity migration
+        const validLevels: LogLevel[] = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'];
         if (typeof data.verbosity === 'number') {
             const levels: LogLevel[] = ['error', 'info', 'debug'];
             data.verbosity = levels[data.verbosity] || 'info';
+        } else if (!data.verbosity || !validLevels.includes(data.verbosity)) {
+            data.verbosity = 'info';
         }
 
         // Handle path migration from v0.3.0 schema
