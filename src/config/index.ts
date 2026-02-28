@@ -73,6 +73,10 @@ export async function loadConfig(): Promise<AppConfig> {
     }
 
     try {
+        // Ensure basic structure exists before Zod validation
+        data.paths = data.paths || {};
+        data.backupPaths = data.backupPaths || { primary: '', sources: [] };
+
         // Handle legacy numeric or invalid verbosity migration
         const validLevels: LogLevel[] = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'];
         if (typeof data.verbosity === 'number') {
@@ -83,18 +87,25 @@ export async function loadConfig(): Promise<AppConfig> {
         }
 
         // Handle path migration from v0.3.0 schema
-        if (data.logDirectory && !data.paths) {
-            data.paths = { logs: data.logDirectory };
+        if (data.logDirectory && !data.paths.logs) {
+            data.paths.logs = data.logDirectory;
             delete data.logDirectory;
         }
-        if (data.backupDirectory && !data.backupPaths) {
-            data.backupPaths = { primary: data.backupDirectory, sources: [] };
+        if (data.backupDirectory && !data.backupPaths.primary) {
+            data.backupPaths.primary = data.backupDirectory;
             delete data.backupDirectory;
         }
 
+        // Final check: if any required string is missing, fill with defaults
+        if (!data.backupPaths.primary) {
+            data.backupPaths.primary = FsService.resolveXdgPath('XDG_STATE_HOME', '.local/state', 'backups');
+        }
+        if (data.dryMode === undefined) data.dryMode = false;
+        if (data.loggingEnabled === undefined) data.loggingEnabled = false;
+
         return AppConfigSchema.parse(data);
     } catch (e) {
-        console.warn('Config validation failed, using defaults:', e);
+        console.warn('Config migration/validation failed, using defaults. Error:', e instanceof z.ZodError ? e.message : e);
         return getDefaultConfig();
     }
 }

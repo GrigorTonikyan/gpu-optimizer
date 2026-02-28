@@ -1,6 +1,7 @@
 import pc from 'picocolors';
 import { terminal } from '../terminal';
 import { clearContent, refreshChrome } from '../app';
+import { getSettings } from '../../controllers';
 
 /**
  * Displays the TUI main menu and waits for user selection.
@@ -9,7 +10,8 @@ import { clearContent, refreshChrome } from '../app';
  * @returns The selected menu action, or 'exit' if the user chose to quit
  */
 export async function showMainMenu(): Promise<string> {
-    refreshChrome();
+    const config = await getSettings();
+    refreshChrome(config);
     const startRow = clearContent();
 
     terminal.moveTo(3, startRow);

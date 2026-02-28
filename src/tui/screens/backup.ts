@@ -1,6 +1,7 @@
 import pc from 'picocolors';
 import { terminal } from '../terminal';
 import { clearContent, refreshChrome } from '../app';
+import { getSettings } from '../../controllers';
 import { listBackups, deleteBackup, rollbackToSnapshot, exportBackup, importBackup } from '../../controllers';
 import { rebuildInitramfs } from '../../controllers';
 import type { SystemProfile } from '../../types';
@@ -13,7 +14,8 @@ import type { SystemProfile } from '../../types';
  */
 export async function showBackupManagement(profile: SystemProfile): Promise<void> {
     while (true) {
-        refreshChrome();
+        const config = await getSettings();
+        refreshChrome(config);
         clearContent();
 
         let row = 4;
@@ -60,10 +62,11 @@ export async function showBackupManagement(profile: SystemProfile): Promise<void
  * Lists all backups in a formatted view.
  */
 async function showBackupList(): Promise<void> {
-    refreshChrome();
+    const config = await getSettings();
+    refreshChrome(config);
     clearContent();
 
-    const backups = listBackups();
+    const backups = await listBackups();
     let row = 4;
 
     terminal.moveTo(3, row++);
@@ -91,10 +94,11 @@ async function showBackupList(): Promise<void> {
  * Allows the user to select and delete a backup.
  */
 async function showDeleteBackup(): Promise<void> {
-    const backups = listBackups();
+    const backups = await listBackups();
 
     if (backups.length === 0) {
-        refreshChrome();
+        const cfg = await getSettings();
+        refreshChrome(cfg);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.dim('No backups to delete.'));
@@ -104,7 +108,8 @@ async function showDeleteBackup(): Promise<void> {
         return;
     }
 
-    refreshChrome();
+    const cfg = await getSettings();
+    refreshChrome(cfg);
     clearContent();
 
     let row = 4;
@@ -127,7 +132,8 @@ async function showDeleteBackup(): Promise<void> {
 
     const backup = backups[selected]!;
 
-    refreshChrome();
+    const confirmCfg = await getSettings();
+    refreshChrome(confirmCfg);
     clearContent();
     terminal.moveTo(3, 4);
     terminal.write(pc.bold(pc.red(`Delete backup ${backup.id}? [y/N] `)));
@@ -142,7 +148,7 @@ async function showDeleteBackup(): Promise<void> {
 
     if (confirmed) {
         try {
-            deleteBackup(backup.id);
+            await deleteBackup(backup.id);
             terminal.moveTo(3, 6);
             terminal.write(pc.green('✓ Backup deleted.'));
         } catch (e: any) {
@@ -159,10 +165,11 @@ async function showDeleteBackup(): Promise<void> {
  * Export a backup to a tar.gz file.
  */
 async function showExportBackup(): Promise<void> {
-    const backups = listBackups();
+    const cfg = await getSettings();
+    const backups = await listBackups();
 
     if (backups.length === 0) {
-        refreshChrome();
+        refreshChrome(cfg);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.dim('No backups to export.'));
@@ -172,7 +179,7 @@ async function showExportBackup(): Promise<void> {
         return;
     }
 
-    refreshChrome();
+    refreshChrome(cfg);
     clearContent();
 
     let row = 4;
@@ -196,13 +203,15 @@ async function showExportBackup(): Promise<void> {
     const outputPath = `/tmp/gpu-optimizer-backup-${backup.id}.tar.gz`;
 
     try {
-        exportBackup(backup.id, outputPath);
-        refreshChrome();
+        await exportBackup(backup.id, outputPath);
+        const successCfg = await getSettings();
+        refreshChrome(successCfg);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.green(`✓ Exported to: ${outputPath}`));
     } catch (e: any) {
-        refreshChrome();
+        const errCfg = await getSettings();
+        refreshChrome(errCfg);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.red(`✗ Export failed: ${e.message}`));
@@ -217,7 +226,8 @@ async function showExportBackup(): Promise<void> {
  * Import a backup from a tar.gz archive.
  */
 async function showImportBackup(): Promise<void> {
-    refreshChrome();
+    const cfg = await getSettings();
+    refreshChrome(cfg);
     clearContent();
 
     terminal.moveTo(3, 4);
@@ -230,13 +240,15 @@ async function showImportBackup(): Promise<void> {
     if (!archivePath) return;
 
     try {
-        const record = importBackup(archivePath.trim());
-        refreshChrome();
+        const record = await importBackup(archivePath.trim());
+        const successCfg = await getSettings();
+        refreshChrome(successCfg);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.green(`✓ Imported backup: ${record.id} (${record.files.length} files)`));
     } catch (e: any) {
-        refreshChrome();
+        const errCfg = await getSettings();
+        refreshChrome(errCfg);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.red(`✗ Import failed: ${e.message}`));
@@ -251,10 +263,11 @@ async function showImportBackup(): Promise<void> {
  * Rollback to a selected backup snapshot.
  */
 async function showRollback(profile: SystemProfile): Promise<void> {
-    const backups = listBackups();
+    const config = await getSettings();
+    const backups = await listBackups();
 
     if (backups.length === 0) {
-        refreshChrome();
+        refreshChrome(config);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.dim('No backups available for rollback.'));
@@ -264,7 +277,7 @@ async function showRollback(profile: SystemProfile): Promise<void> {
         return;
     }
 
-    refreshChrome();
+    refreshChrome(config);
     clearContent();
 
     let row = 4;
@@ -287,7 +300,8 @@ async function showRollback(profile: SystemProfile): Promise<void> {
 
     const backup = backups[selected]!;
 
-    refreshChrome();
+    const confirmCfg = await getSettings();
+    refreshChrome(confirmCfg);
     clearContent();
     terminal.moveTo(3, 4);
     terminal.write(pc.bold(pc.yellow(`Restore backup ${backup.id}? This overwrites current configs. [y/N] `)));
@@ -303,8 +317,9 @@ async function showRollback(profile: SystemProfile): Promise<void> {
     if (!confirmed) return;
 
     try {
-        const restored = rollbackToSnapshot(backup.id);
-        refreshChrome();
+        const restored = await rollbackToSnapshot(backup.id);
+        const currentConfig = await getSettings();
+        refreshChrome(currentConfig);
         clearContent();
 
         let row = 4;
@@ -330,7 +345,7 @@ async function showRollback(profile: SystemProfile): Promise<void> {
 
             if (shouldRebuild) {
                 try {
-                    rebuildInitramfs(profile);
+                    await rebuildInitramfs(profile);
                     terminal.moveTo(3, row++);
                     terminal.write(pc.green('✓ Initramfs rebuilt.'));
                 } catch (e: any) {
@@ -343,7 +358,8 @@ async function showRollback(profile: SystemProfile): Promise<void> {
         terminal.moveTo(3, row + 1);
         terminal.write(pc.bold(pc.green('Rollback complete!')));
     } catch (e: any) {
-        refreshChrome();
+        const errConfig = await getSettings();
+        refreshChrome(errConfig);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.red(`✗ Rollback failed: ${e.message}`));

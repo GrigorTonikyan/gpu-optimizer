@@ -1,7 +1,7 @@
 import pc from 'picocolors';
 import { terminal } from '../terminal';
 import { clearContent, refreshChrome } from '../app';
-import { analyzeOptimizations, checkImmutability, stageOptimizations, applyMutations, rebuildInitramfs } from '../../controllers';
+import { getSettings, analyzeOptimizations, checkImmutability, stageOptimizations, applyMutations, rebuildInitramfs } from '../../controllers';
 import type { SystemProfile, OptimizationRule } from '../../types';
 
 /**
@@ -18,7 +18,8 @@ import type { SystemProfile, OptimizationRule } from '../../types';
 export async function showApplyFlow(profile: SystemProfile): Promise<void> {
     const immutableMsg = checkImmutability(profile);
     if (immutableMsg) {
-        refreshChrome();
+        const config = await getSettings();
+        refreshChrome(config);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write(pc.yellow('⚠  Immutable System Detected'));
@@ -33,7 +34,8 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
     const analysis = analyzeOptimizations(profile);
 
     if (analysis.totalRules === 0) {
-        refreshChrome();
+        const config = await getSettings();
+        refreshChrome(config);
         clearContent();
         terminal.moveTo(3, 4);
         terminal.write('No optimizations to apply for this system.');
@@ -47,8 +49,9 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
     const selected = new Set<string>(analysis.recommended.map(r => r.id));
     let cursor = 0;
 
-    function render(): void {
-        refreshChrome();
+    async function render(): Promise<void> {
+        const config = await getSettings();
+        refreshChrome(config);
         clearContent();
 
         let row = 4;
@@ -94,7 +97,7 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         }
     }
 
-    render();
+    await render();
 
     const action = await new Promise<string>((resolve) => {
         const handler = (key: string) => {
@@ -143,7 +146,8 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
         const selectedRules = allRules.filter(r => selected.has(r.id));
 
         if (selectedRules.length === 0) {
-            refreshChrome();
+            const config = await getSettings();
+            refreshChrome(config);
             clearContent();
             terminal.moveTo(3, 4);
             terminal.write('No optimizations selected.');
@@ -155,7 +159,8 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
 
         const { mutations, warnings } = stageOptimizations(profile, selectedRules);
 
-        refreshChrome();
+        const config = await getSettings();
+        refreshChrome(config);
         clearContent();
 
         let row = 4;
@@ -235,7 +240,7 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
 
                 if (shouldRebuild) {
                     try {
-                        rebuildInitramfs(profile);
+                        await rebuildInitramfs(profile);
                         terminal.moveTo(3, row++);
                         terminal.write(pc.green('✓ Initramfs rebuilt successfully.'));
                     } catch (e: any) {
@@ -264,7 +269,8 @@ export async function showApplyFlow(profile: SystemProfile): Promise<void> {
  * Shows detailed information about a specific optimization rule.
  */
 async function showRuleInfo(rule: OptimizationRule): Promise<void> {
-    refreshChrome();
+    const config = await getSettings();
+    refreshChrome(config);
     clearContent();
 
     let row = 4;

@@ -1,6 +1,7 @@
 import pc from 'picocolors';
 import { terminal } from '../terminal';
 import { clearContent, refreshChrome } from '../app';
+import { getSettings } from '../../controllers';
 import { formatBytes, formatTemp, formatPercent } from '../helpers';
 import type { SystemProfile } from '../../types';
 
@@ -12,7 +13,8 @@ import type { SystemProfile } from '../../types';
  * @param profile - The SystemProfile snapshot to display
  */
 export async function showBriefStatus(profile: SystemProfile): Promise<void> {
-    refreshChrome();
+    const config = await getSettings();
+    refreshChrome(config);
     const startRow = clearContent();
 
     let row = startRow;

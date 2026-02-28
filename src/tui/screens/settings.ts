@@ -42,7 +42,7 @@ export async function showSettings(): Promise<void> {
     }
 
     function render(): void {
-        refreshChrome();
+        refreshChrome(config);
         clearContent();
 
         let row = 4;
@@ -72,7 +72,8 @@ export async function showSettings(): Promise<void> {
             } else if (field.type === 'toggle') {
                 terminal.write(value ? pc.bold(pc.green('ON')) : pc.dim('OFF'));
             } else {
-                terminal.write(pc.bold(String(value ?? pc.dim('undefined'))));
+                const displayValue = value === undefined || value === '' ? pc.dim('(not set)') : pc.bold(String(value));
+                terminal.write(displayValue);
             }
         }
     }

@@ -1,6 +1,7 @@
 import pc from 'picocolors';
 import { terminal } from './terminal';
 import { getSettings } from '../controllers';
+import type { AppConfig } from '../types';
 
 /** Tracks whether the TUI is currently active (in alternate buffer) */
 let isActive = false;
@@ -9,9 +10,7 @@ let isActive = false;
  * Renders the persistent header bar shown on every TUI screen.
  * Displays app name, version, and dry-mode badge if active.
  */
-function renderHeader(): void {
-    const config = getSettings();
-
+function renderHeader(config: AppConfig): void {
     terminal.moveTo(1, 1);
     terminal.eraseLine();
     terminal.write(pc.bold(pc.cyan(' ⚡ Universal GPU Optimizer ')));
@@ -50,8 +49,8 @@ export function clearContent(): number {
 /**
  * Refreshes the chrome (header + footer) without clearing content.
  */
-export function refreshChrome(): void {
-    renderHeader();
+export function refreshChrome(config: AppConfig): void {
+    renderHeader(config);
     renderFooter();
 }
 
@@ -62,15 +61,17 @@ export function refreshChrome(): void {
  *
  * @param onExit - Callback invoked when the user requests application exit
  */
-export function startApp(onExit: () => void): void {
+export async function startApp(onExit: () => void): Promise<void> {
     if (isActive) return;
     isActive = true;
+
+    const config = await getSettings();
 
     terminal.fullscreen(true);
     terminal.rawMode(true);
     terminal.hideCursor(true);
 
-    renderHeader();
+    renderHeader(config);
     renderFooter();
 
     terminal.onKey((key: string) => {

@@ -1,6 +1,7 @@
 import pc from 'picocolors';
 import { terminal } from '../terminal';
 import { clearContent, refreshChrome, getContentHeight } from '../app';
+import { getSettings } from '../../controllers';
 import { formatBytes, formatTemp, formatPercent } from '../helpers';
 import type { SystemProfile } from '../../types';
 
@@ -17,8 +18,9 @@ export async function showDetailedStatus(profile: SystemProfile): Promise<void> 
     let scrollOffset = 0;
     const maxOffset = Math.max(0, lines.length - getContentHeight());
 
-    function render(): void {
-        refreshChrome();
+    async function render(): Promise<void> {
+        const config = await getSettings();
+        refreshChrome(config);
         clearContent();
 
         const contentHeight = getContentHeight();
@@ -33,7 +35,7 @@ export async function showDetailedStatus(profile: SystemProfile): Promise<void> 
         terminal.write(pc.dim(`  Lines ${scrollOffset + 1}–${Math.min(scrollOffset + contentHeight, lines.length)} of ${lines.length}  │  ↑↓ Scroll  │  q Back`));
     }
 
-    render();
+    await render();
 
     return new Promise<void>((resolve) => {
         const handler = (key: string) => {
