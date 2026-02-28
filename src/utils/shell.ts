@@ -23,9 +23,13 @@ export function runUser(cmd: string): string {
 export function runElevated(cmd: string): string {
     try {
         const safeCmd = cmd.replace(/'/g, "'\\''");
-        const { stdout, stderr, success } = Bun.spawnSync(['sudo', 'sh', '-c', safeCmd]);
+        // Using 'inherit' for stdin/stderr to allow sudo password prompt to go to the TTY
+        // while still capturing stdout for output processing.
+        const { stdout, success } = Bun.spawnSync(['sudo', 'sh', '-c', safeCmd], {
+            stdio: ['inherit', 'pipe', 'inherit']
+        });
         if (!success) {
-            throw new Error(stderr.toString().trim() || 'Unknown elevated command error');
+            return '';
         }
         return stdout.toString().trim();
     } catch (e: any) {
@@ -41,9 +45,11 @@ export async function writeElevated(path: string, content: string): Promise<void
         const base64Content = Buffer.from(content, 'utf-8').toString('base64');
         const safePath = path.replace(/'/g, "'\\''");
 
-        const { success, stderr } = Bun.spawnSync(['sh', '-c', `echo "${base64Content}" | base64 -d | sudo tee '${safePath}' > /dev/null`]);
+        const { success } = Bun.spawnSync(['sh', '-c', `echo "${base64Content}" | base64 -d | sudo tee '${safePath}' > /dev/null`], {
+            stdio: ['inherit', 'pipe', 'inherit']
+        });
         if (!success) {
-            throw new Error(stderr.toString().trim() || 'Unknown write error');
+            throw new Error('Sudo tee failed');
         }
     } catch (e: any) {
         throw new Error(`Write elevated failed for ${path}\n${e.message}`);

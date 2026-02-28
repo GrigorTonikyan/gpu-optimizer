@@ -50,33 +50,67 @@ function isSystemdBootActive(): boolean {
 }
 
 /**
+ * Extracts the current entry filename from bootctl status output.
+ */
+export function getSystemdBootCurrentEntry(): string {
+    const status = runLenient('bootctl status 2>/dev/null');
+    const match = status.match(/Current Entry:\s+(.+)$/m);
+    return match ? match[1]!.trim() : '';
+}
+
+/**
+ * Gets the ESP path as reported by bootctl.
+ */
+export function getSystemdBootEspPath(): string {
+    const path = runLenient('bootctl --print-esp-path 2>/dev/null');
+    return path || '/boot';
+}
+
+/**
  * Resolves the active systemd-boot entry config path by searching
  * candidate directories for `.conf` files matching the running kernel.
- * @param candidateDirs - Array of directory paths to probe
  * @param kernelVersion - The currently running kernel version string
  * @returns The resolved config path, or empty string if not found
  */
-function resolveSystemdBootConfig(candidateDirs: string[], kernelVersion: string): string {
-    const readableDir = candidateDirs.find(dir => isReadableDir(dir));
+function resolveSystemdBootConfig(kernelVersion: string): string {
+    const espPath = getSystemdBootEspPath();
+    const candidateDirs = [
+        join(espPath, 'loader/entries'),
+        '/boot/loader/entries',
+        '/efi/loader/entries',
+        '/boot/efi/loader/entries'
+    ];
 
-    if (!readableDir) return '';
+    const currentEntryName = getSystemdBootCurrentEntry();
 
-    try {
-        const entries = readdirSync(readableDir).filter(f => f.endsWith('.conf'));
+    for (const dir of candidateDirs) {
+        if (!isReadableDir(dir)) continue;
 
-        const activeConfig = entries.find(f => {
-            const content = readFileSync(join(readableDir, f), 'utf-8');
-            return content.includes(kernelVersion);
-        });
+        try {
+            const entries = readdirSync(dir).filter(f => f.endsWith('.conf'));
+            if (entries.length === 0) continue;
 
-        if (activeConfig) return join(readableDir, activeConfig);
+            // 1. Try exact match from bootctl
+            if (currentEntryName && entries.includes(currentEntryName)) {
+                return join(dir, currentEntryName);
+            }
 
-        /** Fallback: pick any non-fallback entry, or the first entry */
-        const fallback = entries.find(f => !f.includes('fallback') && !f.includes('rescue')) ?? entries[0];
-        return fallback ? join(readableDir, fallback) : '';
-    } catch {
-        return '';
+            // 2. Try matching by kernel version in content
+            const activeConfig = entries.find(f => {
+                const content = readFileSync(join(dir, f), 'utf-8');
+                return content.includes(kernelVersion);
+            });
+            if (activeConfig) return join(dir, activeConfig);
+
+            // 3. Fallback: pick any non-fallback entry, or the first entry
+            const fallback = entries.find(f => !f.includes('fallback') && !f.includes('rescue')) ?? entries[0];
+            if (fallback) return join(dir, fallback);
+        } catch {
+            continue;
+        }
     }
+
+    return '';
 }
 
 /**
@@ -84,30 +118,43 @@ function resolveSystemdBootConfig(candidateDirs: string[], kernelVersion: string
  * Called only when injection is requested and initial discovery failed due to permissions.
  */
 export function resolveSystemdBootConfigElevated(kernelVersion: string): string {
+    const espPath = getSystemdBootEspPath();
     const candidateDirs = [
+        join(espPath, 'loader/entries'),
         '/boot/loader/entries',
         '/efi/loader/entries',
         '/boot/efi/loader/entries'
     ];
 
+    const currentEntryName = getSystemdBootCurrentEntry();
+
     for (const dir of candidateDirs) {
         try {
             // Use sudo to list files in the directory
-            const filesOutput = runElevated(`ls '${dir}'`).split('\n').filter(f => f.endsWith('.conf'));
+            const filesOutput = runElevated(`ls '${dir}'`)
+                .split('\n')
+                .map(f => f.trim())
+                .filter(f => f.endsWith('.conf'));
 
+            if (filesOutput.length === 0) continue;
+
+            // 1. Try exact match from bootctl
+            if (currentEntryName && filesOutput.includes(currentEntryName)) {
+                return join(dir, currentEntryName);
+            }
+
+            // 2. Try matching by kernel version in content (using elevated cat)
             for (const file of filesOutput) {
-                const fullPath = join(dir, file.trim());
+                const fullPath = join(dir, file);
                 const content = runElevated(`cat '${fullPath}'`);
                 if (content.includes(kernelVersion)) {
                     return fullPath;
                 }
             }
 
-            // Fallback to first non-fallback entry if exact kernel match not found
-            if (filesOutput.length > 0) {
-                const bestMatch = filesOutput.find(f => !f.includes('fallback') && !f.includes('rescue')) ?? filesOutput[0];
-                return join(dir, bestMatch!.trim());
-            }
+            // 3. Fallback: pick any non-fallback entry, or the first entry
+            const bestMatch = filesOutput.find(f => !f.includes('fallback') && !f.includes('rescue')) ?? filesOutput[0];
+            if (bestMatch) return join(dir, bestMatch);
         } catch {
             continue;
         }
@@ -131,37 +178,17 @@ export function detectBootloader(kernelVersion: string): { type: BootloaderType;
         };
     }
 
-    const candidateDirs = [
-        '/boot/loader/entries',
-        '/efi/loader/entries',
-        '/boot/efi/loader/entries'
-    ];
-
-    /**
-     * First try reading directories directly.
-     * If none are readable, fall back to `bootctl` to confirm
-     * systemd-boot is installed (common on Arch where /boot is 0700).
-     */
-    const hasReadableDir = candidateDirs.some(dir => isReadableDir(dir));
-
-    if (hasReadableDir) {
-        const configPath = resolveSystemdBootConfig(candidateDirs, kernelVersion);
-        if (configPath) {
-            return { type: 'systemd-boot', configPath };
-        }
+    // Try normal resolution first
+    const configPath = resolveSystemdBootConfig(kernelVersion);
+    if (configPath) {
+        return { type: 'systemd-boot', configPath };
     }
 
+    // If resolution failed, check if systemd-boot is active at all
     if (isSystemdBootActive()) {
-        /**
-         * systemd-boot is confirmed but entry dirs are not user-readable.
-         * We know it's systemd-boot but can't resolve the exact config
-         * path without elevated permissions. The mutation engine will
-         * need to use elevated reads when it processes this.
-         */
-        const configPath = resolveSystemdBootConfig(candidateDirs, kernelVersion);
         return {
             type: 'systemd-boot',
-            configPath,
+            configPath: '', // Will be resolved with elevation during mutation staging
         };
     }
 
