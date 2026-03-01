@@ -8,12 +8,19 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 ## [Unreleased]
 
 ### Added
+- **Systemd-boot Parity**: Enhanced `systemd-boot` discovery with robust `loader.conf` parsing and entry identification.
+- **Trace-level Logging**: Introduced `trace` and `debug` verbosity to `Logger` and integrated it into `shell.ts` for granular execution tracking.
+- **Logger Resilience**: Added session start markers, automatic log directory creation, and fail-safe file rotation.
 - **Optimization Status Verification**: Implemented system-wide detection of already-applied kernel parameters and modprobe options.
     - Added `isApplied` status to `OptimizationRule` type.
     - Integrated `/proc/cmdline` and `/etc/modprobe.d/gpu-optimizer.conf` probing into the discovery controller.
     - Updated TUI and CLI to mark applied rules as `[DONE]` and exclude them from default selection.
     - **Refinement**: Optimized detection to be entirely sudo-less and support multi-parameter rules.
     - **Discovery**: Added elevated fallback for `systemd-boot` entry discovery when boot directories are restricted.
+
+### Changed
+- **Refined Shell Execution**: Improved error handling for `sudo` commands and added detailed output logging in `shell.ts`.
+- **Boot Discovery**: Optimized `detectBootloader` to prioritize reliable detection methods and handle restricted permissions gracefully.
 
 ### Fixed
 - **Documentation**: Removed non-English (Russian) JSDocs from `src/utils/logger.ts` and replaced them with English equivalents.

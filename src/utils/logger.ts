@@ -32,21 +32,22 @@ export class Logger {
         this.currentLevel = config.verbosity;
 
         if (config.loggingEnabled) {
-            const { getLogPath } = await import('../config');
-            this.logFile = await getLogPath(config);
+            try {
+                const { getLogPath } = await import('../config');
+                this.logFile = await getLogPath(config);
 
-            if (this.logFile) {
-                // Ensure log directory exists
-                try {
+                if (this.logFile) {
                     const { mkdir } = await import('node:fs/promises');
                     const logDir = join(this.logFile, '..');
                     await mkdir(logDir, { recursive: true });
-                } catch (e) {
-                    console.warn(pc.yellow(`⚠ Could not create log directory: ${e}`));
-                    this.logFile = null;
+
+                    // Initial write check
+                    const { appendFile } = await import('node:fs/promises');
+                    await appendFile(this.logFile, `\n--- Session Start: ${new Date().toISOString()} ---\n`, 'utf-8');
                 }
-            } else {
-                config.loggingEnabled = false;
+            } catch (e) {
+                console.warn(pc.yellow(`⚠ Logger initialization failed: ${e}`));
+                this.logFile = null;
             }
         }
 
@@ -54,12 +55,14 @@ export class Logger {
     }
 
     private static shouldLog(level: LogLevel): boolean {
+        // If we are in trace/debug mode, we should almost always log if initialized
+        if (this.currentLevel === 'trace' || this.currentLevel === 'debug') return true;
         return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[this.currentLevel];
     }
 
     private static formatMessage(level: LogLevel, message: string): string {
-        const timestamp = new Date().toISOString();
-        const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+        const timestamp = new Date().toISOString().split('T')[1]?.split('Z')[0] || new Date().toISOString();
+        const prefix = `[${timestamp}] [${level.toUpperCase().padEnd(5)}]`;
 
         switch (level) {
             case 'fatal': return pc.bgRed(pc.white(pc.bold(`${prefix} ${message}`)));
@@ -73,27 +76,27 @@ export class Logger {
     }
 
     private static async writeToFile(level: LogLevel, message: string): Promise<void> {
+        // We only log to file if it was initialized and enabled
         if (!this.logFile) return;
-        const logFilePath = this.logFile;
 
         const timestamp = new Date().toISOString();
-        const line = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+        const line = `[${timestamp}] [${level.toUpperCase().padEnd(5)}] ${message}\n`;
 
         try {
             const { appendFile, stat, rename, unlink } = await import('node:fs/promises');
-            await appendFile(logFilePath, line, 'utf-8');
+            await appendFile(this.logFile, line, 'utf-8');
 
             // Log rotation: if file > 10MB, rotate it
-            const stats = await stat(logFilePath);
+            const stats = await stat(this.logFile);
             if (stats.size > 10 * 1024 * 1024) {
-                const oldFile = `${logFilePath}.old`;
+                const oldFile = `${this.logFile}.old`;
                 if (await Bun.file(oldFile).exists()) {
                     await unlink(oldFile);
                 }
-                await rename(logFilePath, oldFile);
+                await rename(this.logFile, oldFile);
             }
         } catch {
-            // Failsafe: don't let logger crash the app
+            // Silently fail to avoid crashing the TUI
         }
     }
 

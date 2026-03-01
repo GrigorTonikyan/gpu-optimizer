@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { join } from 'node:path';
 import type { AppConfig, LogLevel } from '../types';
 import { FsService } from '../services/fs';
+import { Logger } from '../utils/logger';
 
 /**
  * Zod schema for validating the persisted application configuration.
@@ -69,10 +70,12 @@ export async function loadConfig(): Promise<AppConfig> {
     const data = await FsService.readJson<any>(configPath);
 
     if (!data) {
+        Logger.debug('No config file found, using defaults.');
         return getDefaultConfig();
     }
 
     try {
+        Logger.trace('Validating loaded config structure...');
         // Ensure basic structure exists before Zod validation
         data.paths = data.paths || {};
         data.backupPaths = data.backupPaths || { primary: '', sources: [] };
@@ -82,7 +85,9 @@ export async function loadConfig(): Promise<AppConfig> {
         if (typeof data.verbosity === 'number') {
             const levels: LogLevel[] = ['error', 'info', 'debug'];
             data.verbosity = levels[data.verbosity] || 'info';
+            Logger.debug(`Migrated numeric verbosity to: ${data.verbosity}`);
         } else if (!data.verbosity || !validLevels.includes(data.verbosity)) {
+            Logger.debug(`Invalid verbosity found: ${data.verbosity}, resetting to info`);
             data.verbosity = 'info';
         }
 
@@ -90,10 +95,12 @@ export async function loadConfig(): Promise<AppConfig> {
         if (data.logDirectory && !data.paths.logs) {
             data.paths.logs = data.logDirectory;
             delete data.logDirectory;
+            Logger.debug('Migrated logDirectory to paths.logs');
         }
         if (data.backupDirectory && !data.backupPaths.primary) {
             data.backupPaths.primary = data.backupDirectory;
             delete data.backupDirectory;
+            Logger.debug('Migrated backupDirectory to backupPaths.primary');
         }
 
         // Final check: if any required string is missing, fill with defaults
@@ -103,9 +110,12 @@ export async function loadConfig(): Promise<AppConfig> {
         if (data.dryMode === undefined) data.dryMode = false;
         if (data.loggingEnabled === undefined) data.loggingEnabled = false;
 
-        return AppConfigSchema.parse(data);
+        const parsed = AppConfigSchema.parse(data);
+        Logger.trace('Config validation successful.');
+        return parsed;
     } catch (e) {
-        console.warn('Config migration/validation failed, using defaults. Error:', e instanceof z.ZodError ? e.message : e);
+        const errorMsg = e instanceof z.ZodError ? e.message : String(e);
+        Logger.warn(`Config migration/validation failed, using defaults. Error: ${errorMsg}`);
         return getDefaultConfig();
     }
 }
@@ -114,14 +124,21 @@ export async function loadConfig(): Promise<AppConfig> {
  * Persists the given configuration.
  */
 export async function saveConfig(config: AppConfig): Promise<void> {
-    const configPath = await getConfigPath();
-    await FsService.writeJson(configPath, config);
+    try {
+        const configPath = await getConfigPath();
+        await FsService.writeJson(configPath, config);
+        Logger.debug(`Config saved to: ${configPath}`);
+    } catch (e) {
+        Logger.error('Failed to save configuration', e);
+        throw e;
+    }
 }
 
 /**
  * Resets the configuration to defaults.
  */
 export async function resetConfig(): Promise<AppConfig> {
+    Logger.info('Resetting configuration to default values.');
     const defaults = getDefaultConfig();
     await saveConfig(defaults);
     return defaults;

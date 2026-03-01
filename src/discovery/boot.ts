@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync, accessSync, constants } from 'node:fs';
 import { join } from 'node:path';
 import { runElevated } from '../utils/shell';
+import { FsService } from '../services/fs';
+import { Logger } from '../utils/logger';
 import type { BootloaderType } from '../types';
 
 /**
@@ -29,7 +31,8 @@ function runLenient(cmd: string): string {
     try {
         const { stdout } = Bun.spawnSync(['sh', '-c', cmd]);
         return stdout.toString().trim();
-    } catch {
+    } catch (e) {
+        Logger.trace(`Lenient execution failed [${cmd}]: ${e}`);
         return '';
     }
 }
@@ -42,20 +45,57 @@ function runLenient(cmd: string): string {
  * @returns `true` if bootctl confirms systemd-boot is the active boot loader
  */
 function isSystemdBootActive(): boolean {
+    Logger.trace('Checking if systemd-boot is active...');
     const isInstalled = runLenient('bootctl is-installed 2>/dev/null');
-    if (isInstalled === 'yes') return true;
+    if (isInstalled === 'yes') {
+        Logger.debug('systemd-boot is installed (via bootctl is-installed)');
+        return true;
+    }
 
     const status = runLenient('bootctl status 2>/dev/null');
-    return status.includes('systemd-boot');
+    const isActive = status.includes('systemd-boot');
+    if (isActive) Logger.debug('systemd-boot detected in bootctl status');
+    return isActive;
 }
 
 /**
- * Extracts the current entry filename from bootctl status output.
+ * Extracts the current entry filename or ID from bootctl status output.
  */
 export function getSystemdBootCurrentEntry(): string {
     const status = runLenient('bootctl status 2>/dev/null');
-    const match = status.match(/Current Entry:\s+(.+)$/m);
-    return match ? match[1]!.trim() : '';
+    Logger.trace('Parsing bootctl status for current entry...');
+
+    for (const line of status.split('\n')) {
+        if (line.includes('ID:') || line.includes('Current Entry:')) {
+            const parts = line.split(/ID:|Current Entry:/);
+            const entry = parts[parts.length - 1]?.trim();
+            if (entry) {
+                Logger.debug(`Found current systemd-boot entry ID: ${entry}`);
+                return entry;
+            }
+        }
+    }
+    return '';
+}
+
+/**
+ * Extracts the active configuration source path from bootctl status.
+ * This is the most reliable way to find the config file.
+ */
+export function getSystemdBootConfigSource(): string {
+    const status = runLenient('bootctl status 2>/dev/null');
+    Logger.trace('Searching for Source path in bootctl status...');
+
+    for (const line of status.split('\n')) {
+        if (line.includes('Source:')) {
+            const source = line.split('Source:')[1]?.trim();
+            if (source) {
+                Logger.debug(`Detected systemd-boot config source: ${source}`);
+                return source;
+            }
+        }
+    }
+    return '';
 }
 
 /**
@@ -63,7 +103,17 @@ export function getSystemdBootCurrentEntry(): string {
  */
 export function getSystemdBootEspPath(): string {
     const path = runLenient('bootctl --print-esp-path 2>/dev/null');
-    return path || '/boot';
+    if (path) {
+        Logger.debug(`ESP path from bootctl: ${path}`);
+        return path;
+    }
+    // Fallback: check /boot and /efi
+    if (existsSync('/boot/loader/loader.conf')) return '/boot';
+    if (existsSync('/efi/loader/loader.conf')) return '/efi';
+    if (existsSync('/boot/efi/loader/loader.conf')) return '/boot/efi';
+
+    Logger.trace('Could not determine ESP path');
+    return '';
 }
 
 /**
@@ -73,6 +123,13 @@ export function getSystemdBootEspPath(): string {
  * @returns The resolved config path, or empty string if not found
  */
 function resolveSystemdBootConfig(kernelVersion: string): string {
+    // 0. Priority: Check Source if reported by bootctl and readable
+    const source = getSystemdBootConfigSource();
+    if (source && isReadableDir(join(source, '..'))) {
+        Logger.info(`Using bootctl reported Source (unprivileged): ${source}`);
+        return source;
+    }
+
     const espPath = getSystemdBootEspPath();
     const candidateDirs = [
         join(espPath, 'loader/entries'),
@@ -81,18 +138,31 @@ function resolveSystemdBootConfig(kernelVersion: string): string {
         '/boot/efi/loader/entries'
     ];
 
+    Logger.trace(`Searching for systemd-boot config in candidates (unprivileged): ${candidateDirs.join(', ')}`);
+
     const currentEntryName = getSystemdBootCurrentEntry();
 
     for (const dir of candidateDirs) {
-        if (!isReadableDir(dir)) continue;
+        if (!isReadableDir(dir)) {
+            Logger.trace(`Directory not readable (skipping): ${dir}`);
+            continue;
+        }
 
         try {
             const entries = readdirSync(dir).filter(f => f.endsWith('.conf'));
-            if (entries.length === 0) continue;
+            if (entries.length === 0) {
+                Logger.trace(`No .conf files in ${dir}`);
+                continue;
+            }
 
             // 1. Try exact match from bootctl
-            if (currentEntryName && entries.includes(currentEntryName)) {
-                return join(dir, currentEntryName);
+            if (currentEntryName) {
+                const exact = entries.find(f => f === currentEntryName || f === `${currentEntryName}.conf`);
+                if (exact) {
+                    const res = join(dir, exact);
+                    Logger.info(`Resolved systemd-boot config via exact match: ${res}`);
+                    return res;
+                }
             }
 
             // 2. Try matching by kernel version in content
@@ -100,16 +170,26 @@ function resolveSystemdBootConfig(kernelVersion: string): string {
                 const content = readFileSync(join(dir, f), 'utf-8');
                 return content.includes(kernelVersion);
             });
-            if (activeConfig) return join(dir, activeConfig);
+            if (activeConfig) {
+                const res = join(dir, activeConfig);
+                Logger.info(`Resolved systemd-boot config via kernel match: ${res}`);
+                return res;
+            }
 
             // 3. Fallback: pick any non-fallback entry, or the first entry
             const fallback = entries.find(f => !f.includes('fallback') && !f.includes('rescue')) ?? entries[0];
-            if (fallback) return join(dir, fallback);
-        } catch {
+            if (fallback) {
+                const res = join(dir, fallback);
+                Logger.info(`Resolved systemd-boot config via fallback: ${res}`);
+                return res;
+            }
+        } catch (e) {
+            Logger.trace(`Error reading entries from ${dir}: ${e}`);
             continue;
         }
     }
 
+    Logger.debug('Unprivileged systemd-boot config resolution failed');
     return '';
 }
 
@@ -118,6 +198,19 @@ function resolveSystemdBootConfig(kernelVersion: string): string {
  * Called only when injection is requested and initial discovery failed due to permissions.
  */
 export function resolveSystemdBootConfigElevated(kernelVersion: string): string {
+    Logger.info(`Starting elevated systemd-boot resolution for kernel ${kernelVersion}`);
+
+    // 0. Priority: Check Source if reported by bootctl
+    const source = getSystemdBootConfigSource();
+    if (source) {
+        Logger.info(`Probing bootctl reported Source with elevation: ${source}`);
+        const exists = runElevated(`ls '${source}' 2>/dev/null`);
+        if (exists) {
+            Logger.info(`Resolved systemd-boot config via bootctl Source: ${source}`);
+            return source;
+        }
+    }
+
     const espPath = getSystemdBootEspPath();
     const candidateDirs = [
         join(espPath, 'loader/entries'),
@@ -126,40 +219,65 @@ export function resolveSystemdBootConfigElevated(kernelVersion: string): string 
         '/boot/efi/loader/entries'
     ];
 
+    Logger.debug(`Checking candidate directories (elevated): ${candidateDirs.join(', ')}`);
+
     const currentEntryName = getSystemdBootCurrentEntry();
 
     for (const dir of candidateDirs) {
+        Logger.trace(`Inspecting ${dir} with elevation...`);
         try {
             // Use sudo to list files in the directory
-            const filesOutput = runElevated(`ls '${dir}'`)
-                .split('\n')
+            const rawFiles = runElevated(`ls -1 '${dir}' 2>/dev/null`);
+            if (!rawFiles) {
+                Logger.trace(`ls failed or returned empty for ${dir}`);
+                continue;
+            }
+
+            const filesOutput = rawFiles.split('\n')
                 .map(f => f.trim())
                 .filter(f => f.endsWith('.conf'));
 
-            if (filesOutput.length === 0) continue;
+            if (filesOutput.length === 0) {
+                Logger.trace(`No .conf files found in ${dir} (elevated)`);
+                continue;
+            }
+
+            Logger.trace(`Found ${filesOutput.length} entries in ${dir}`);
 
             // 1. Try exact match from bootctl
-            if (currentEntryName && filesOutput.includes(currentEntryName)) {
-                return join(dir, currentEntryName);
+            if (currentEntryName) {
+                const exact = filesOutput.find(f => f === currentEntryName || f === `${currentEntryName}.conf`);
+                if (exact) {
+                    const res = join(dir, exact);
+                    Logger.info(`Resolved (elevated) exact match: ${res}`);
+                    return res;
+                }
             }
 
             // 2. Try matching by kernel version in content (using elevated cat)
             for (const file of filesOutput) {
                 const fullPath = join(dir, file);
-                const content = runElevated(`cat '${fullPath}'`);
+                const content = runElevated(`cat '${fullPath}' 2>/dev/null`);
                 if (content.includes(kernelVersion)) {
+                    Logger.info(`Resolved (elevated) kernel match: ${fullPath}`);
                     return fullPath;
                 }
             }
 
             // 3. Fallback: pick any non-fallback entry, or the first entry
             const bestMatch = filesOutput.find(f => !f.includes('fallback') && !f.includes('rescue')) ?? filesOutput[0];
-            if (bestMatch) return join(dir, bestMatch);
-        } catch {
+            if (bestMatch) {
+                const res = join(dir, bestMatch);
+                Logger.info(`Resolved (elevated) fallback match: ${res}`);
+                return res;
+            }
+        } catch (e) {
+            Logger.debug(`Elevated inspection of ${dir} failed: ${e}`);
             continue;
         }
     }
 
+    Logger.error('Failed to resolve systemd-boot config even with elevation.');
     return '';
 }
 
@@ -171,7 +289,10 @@ export function resolveSystemdBootConfigElevated(kernelVersion: string): string 
  * @returns An object with the detected bootloader type and its config path
  */
 export function detectBootloader(kernelVersion: string): { type: BootloaderType; configPath: string } {
+    Logger.debug(`Detecting bootloader (kernel=${kernelVersion})...`);
+
     if (existsSync('/etc/default/grub')) {
+        Logger.info('Detected GRUB at /etc/default/grub');
         return {
             type: 'GRUB',
             configPath: '/etc/default/grub',
@@ -179,6 +300,7 @@ export function detectBootloader(kernelVersion: string): { type: BootloaderType;
     }
 
     // Try normal resolution first
+    Logger.trace('Attempting unprivileged systemd-boot resolution...');
     const configPath = resolveSystemdBootConfig(kernelVersion);
     if (configPath) {
         return { type: 'systemd-boot', configPath };
@@ -186,12 +308,14 @@ export function detectBootloader(kernelVersion: string): { type: BootloaderType;
 
     // If resolution failed, check if systemd-boot is active at all
     if (isSystemdBootActive()) {
+        Logger.debug('systemd-boot is active but config path resolution requires elevation.');
         return {
             type: 'systemd-boot',
             configPath: '', // Will be resolved with elevation during mutation staging
         };
     }
 
+    Logger.warn('No supported bootloader identified.');
     return {
         type: 'Unknown',
         configPath: ''
